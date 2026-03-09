@@ -155,7 +155,3 @@ If TestBlox helps you in your work, consider starring the repo or sharing it wit
 ## License
 
 [MIT](LICENSE)
-
----
-
-**Note for release:** If you fork, replace `arslan-ahmetjanov` in the badge and release links with your GitHub username. Add a `LICENSE` file (e.g. MIT) in the repo root if you publish under that license.

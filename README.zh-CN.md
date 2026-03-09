@@ -155,7 +155,3 @@ npm run build
 ## 许可证
 
 [MIT](LICENSE)
-
----
-
-**发布前注意：** 若 fork 本仓库，请将徽章与发行链接中的 `arslan-ahmetjanov` 替换为你的 GitHub 用户名。

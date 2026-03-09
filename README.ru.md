@@ -155,7 +155,3 @@ npm run build
 ## Лицензия
 
 [MIT](LICENSE)
-
----
-
-**Перед релизом:** при форке замените `arslan-ahmetjanov` в бейдже и ссылках на релизы на ваш GitHub username.
