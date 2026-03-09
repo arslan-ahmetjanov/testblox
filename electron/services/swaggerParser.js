@@ -1,0 +1,79 @@
+const axios = require('axios');
+const filestore = require('../store/filestore');
+
+/**
+ * Fetch Swagger/OpenAPI JSON from URL or use provided object.
+ */
+async function fetchSwaggerSpec(urlOrSpec) {
+  if (typeof urlOrSpec === 'string' && (urlOrSpec.startsWith('http://') || urlOrSpec.startsWith('https://'))) {
+    const res = await axios.get(urlOrSpec, { timeout: 15000 });
+    return res.data;
+  }
+  if (typeof urlOrSpec === 'object' && urlOrSpec !== null) return urlOrSpec;
+  throw new Error('Invalid Swagger source: URL or JSON object required');
+}
+
+/**
+ * Parse OpenAPI 2 (Swagger) or 3 spec into a list of endpoint descriptors.
+ */
+function parsePaths(spec) {
+  const paths = spec.paths || {};
+  const baseUrl = spec.servers?.[0]?.url || spec.host ? `${spec.schemes?.[0] || 'https'}://${spec.host}${(spec.basePath || '')}` : '';
+  const list = [];
+  for (const [path, pathItem] of Object.entries(paths)) {
+    if (typeof pathItem !== 'object' || pathItem === null) continue;
+    const methods = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'];
+    for (const method of methods) {
+      const op = pathItem[method];
+          if (!op) continue;
+          const summary = op.summary || op.description || `${method.toUpperCase()} ${path}`;
+          const parameters = op.parameters || pathItem.parameters || [];
+          const requestBody = op.requestBody != null
+            ? (typeof op.requestBody.content === 'object' && op.requestBody.content['application/json']
+                ? op.requestBody.content['application/json'].schema
+                : op.requestBody)
+            : null;
+          list.push({
+            method: method.toUpperCase(),
+            path,
+            summary: typeof summary === 'string' ? summary : '',
+            baseUrl,
+            parameters: Array.isArray(parameters) ? parameters : [],
+            requestBody: requestBody || null,
+            responses: op.responses || {},
+          });
+    }
+  }
+  return list;
+}
+
+/**
+ * Import Swagger from URL or JSON: create one API base (baseUrl from servers) and endpoints linked via baseId.
+ */
+async function importSwagger(workspacePath, urlOrSpec) {
+  const spec = await fetchSwaggerSpec(urlOrSpec);
+  const baseUrl = spec.servers?.[0]?.url || (spec.host ? `${spec.schemes?.[0] || 'https'}://${spec.host}${(spec.basePath || '')}` : '');
+  const apiBase = filestore.createBase(workspacePath, {
+    title: spec.info?.title || 'Imported API',
+    baseUrl: baseUrl.replace(/\/$/, ''),
+  });
+  const parsed = parsePaths(spec);
+  const created = [];
+  for (const p of parsed) {
+    const endpoint = filestore.createEndpoint(workspacePath, {
+      title: `${p.method} ${p.path}`,
+      method: p.method,
+      path: p.path,
+      summary: p.summary,
+      baseId: apiBase.id,
+      baseUrl: '',
+      parameters: p.parameters,
+      requestBody: p.requestBody,
+      responses: p.responses,
+    });
+    created.push(endpoint);
+  }
+  return created;
+}
+
+module.exports = { fetchSwaggerSpec, parsePaths, importSwagger };
