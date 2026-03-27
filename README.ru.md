@@ -104,6 +104,8 @@ npm run build
    - **Model:** например, `openai/gpt-4o-mini` или другая модель.
 4. Сохраните. Доступны «Generate with AI» и «Generate from selection».
 
+**Ключ через переменные окружения:** Можно задать `TESTBLOX_LLM_API_KEY` (и при необходимости `TESTBLOX_LLM_MODEL`, `TESTBLOX_LLM_API_BASE_URL`) в окружении или в файле `.env` в корне workspace. Приложение подгружает `.env` перед вызовом LLM, ключ не сохраняется в Настройках и в `.testblox/llm.json`. В CI задайте эти переменные в пайплайне (GitHub Secrets, GitLab CI variables).
+
 ---
 
 ## Структура проекта (рабочее пространство)
@@ -120,6 +122,17 @@ npm run build
 ```
 
 Храните в Git `.testblox/`, `pages/`, `tests/` и `endpoints/`, если хотите версионировать тесты вместе с проектом.
+
+---
+
+## Переменные и секреты
+
+Значения переменных (логины, пароли, токены) хранятся в файле **`.env`** в корне workspace. Файл создаётся при инициализации проекта или при сохранении первой переменной и не коммитится (указан в .gitignore).
+
+- **Переменные без pattern** — имя в `.testblox/variables.json`, значение в `.env`. В шагах и полях auth используйте `{{variableName}}`.
+- **Переменные с pattern** (regex) — в variables.json только pattern; значение генерируется при каждом запуске, в .env не записывается.
+- **В CI** — задайте те же имена переменных через env пайплайна (GitHub Secrets, GitLab CI variables).
+- **Прямая ссылка на env** — в любом поле (например, auth token или password) можно использовать `{{env:VAR_NAME}}` для подстановки из `process.env.VAR_NAME` (из `.env` или env CI).
 
 ---
 

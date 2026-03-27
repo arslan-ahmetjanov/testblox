@@ -24,14 +24,44 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import Accordion from '@mui/material/Accordion';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import AccordionDetails from '@mui/material/AccordionDetails';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+const AUTH_TYPES = [{ value: 'none', label: 'None' }, { value: 'bearer', label: 'Bearer Token' }, { value: 'basic', label: 'Basic Auth' }];
+
+function keyValueToObject(arr) {
+  if (!Array.isArray(arr)) return {};
+  return arr.reduce((acc, { key, value }) => {
+    if (key != null && String(key).trim() !== '') acc[String(key).trim()] = value != null ? String(value) : '';
+    return acc;
+  }, {});
+}
+function objectToKeyValue(obj) {
+  if (!obj || typeof obj !== 'object') return [];
+  return Object.entries(obj).map(([key, value]) => ({ key, value: value != null ? String(value) : '' }));
+}
+function parametersToForm(parameters) {
+  if (!Array.isArray(parameters) || parameters.length === 0) return [{ name: '', value: '' }];
+  return parameters.map((p) => ({ name: p.name ?? '', value: p.value != null ? String(p.value) : '' }));
+}
+function formToParameters(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.filter(({ name }) => name != null && String(name).trim() !== '').map(({ name, value }) => ({ name: String(name).trim(), value: value != null ? String(value) : '', in: 'query' }));
+}
 
 export default function EndpointsScreen({ onBack, onRefresh }) {
   const [endpoints, setEndpoints] = useState([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({ title: '', method: 'GET', path: '/', summary: '', baseUrl: '' });
+  const [form, setForm] = useState({
+    title: '', method: 'GET', path: '/', summary: '', baseUrl: '',
+    parameters: [{ name: '', value: '' }],
+    headers: [{ key: '', value: '' }],
+    auth: { type: 'none', token: '', username: '', password: '' },
+  });
   const [saving, setSaving] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importUrl, setImportUrl] = useState('');
@@ -47,7 +77,12 @@ export default function EndpointsScreen({ onBack, onRefresh }) {
 
   const handleAdd = () => {
     setEditingId(null);
-    setForm({ title: 'New Endpoint', method: 'GET', path: '/', summary: '', baseUrl: '' });
+    setForm({
+      title: 'New Endpoint', method: 'GET', path: '/', summary: '', baseUrl: '',
+      parameters: [{ name: '', value: '' }],
+      headers: [{ key: '', value: '' }],
+      auth: { type: 'none', token: '', username: '', password: '' },
+    });
     setEditOpen(true);
   };
 
@@ -59,6 +94,11 @@ export default function EndpointsScreen({ onBack, onRefresh }) {
       path: ep.path || '/',
       summary: ep.summary || '',
       baseUrl: ep.baseUrl || '',
+      parameters: parametersToForm(ep.parameters).length ? parametersToForm(ep.parameters) : [{ name: '', value: '' }],
+      headers: objectToKeyValue(ep.headers).length ? objectToKeyValue(ep.headers) : [{ key: '', value: '' }],
+      auth: ep.auth && (ep.auth.type === 'bearer' || ep.auth.type === 'basic')
+        ? { type: ep.auth.type, token: ep.auth.token ?? '', username: ep.auth.username ?? '', password: ep.auth.password ?? '' }
+        : { type: 'none', token: '', username: '', password: '' },
     });
     setEditOpen(true);
   };
@@ -66,10 +106,22 @@ export default function EndpointsScreen({ onBack, onRefresh }) {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const payload = {
+        title: form.title,
+        method: form.method,
+        path: form.path,
+        summary: form.summary,
+        baseUrl: form.baseUrl,
+        parameters: formToParameters(form.parameters),
+        headers: keyValueToObject(form.headers),
+        auth: form.auth.type === 'none' ? null : (form.auth.type === 'bearer'
+          ? { type: 'bearer', token: form.auth.token }
+          : { type: 'basic', username: form.auth.username, password: form.auth.password }),
+      };
       if (editingId) {
-        await window.electronAPI.updateEndpoint(editingId, form);
+        await window.electronAPI.updateEndpoint(editingId, payload);
       } else {
-        await window.electronAPI.createEndpoint(form);
+        await window.electronAPI.createEndpoint(payload);
       }
       setEditOpen(false);
       load();
@@ -183,8 +235,60 @@ export default function EndpointsScreen({ onBack, onRefresh }) {
             onChange={(e) => setForm((f) => ({ ...f, summary: e.target.value }))}
             multiline
             rows={2}
-            sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
+            sx={{ mb: 2, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
           />
+          <Accordion disableGutters sx={{ bgcolor: 'transparent', boxShadow: 'none', '&:before': { display: 'none' }, border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'text.secondary' }} />} sx={{ '& .MuiAccordionSummary-content': { color: 'text.primary' } }}>
+              <Typography variant="subtitle2" sx={{ color: 'text.primary' }}>Query parameters</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              {(form.parameters || [{ name: '', value: '' }]).map((row, i) => (
+                <Box key={i} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+                  <TextField size="small" placeholder="Name" value={row.name} onChange={(e) => setForm((f) => ({ ...f, parameters: f.parameters.map((r, j) => j === i ? { ...r, name: e.target.value } : r) }))} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                  <TextField size="small" placeholder="Value" value={row.value} onChange={(e) => setForm((f) => ({ ...f, parameters: f.parameters.map((r, j) => j === i ? { ...r, value: e.target.value } : r) }))} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                  <IconButton size="small" onClick={() => setForm((f) => ({ ...f, parameters: f.parameters.filter((_, j) => j !== i).length ? f.parameters.filter((_, j) => j !== i) : [{ name: '', value: '' }] }))} sx={{ color: 'text.secondary' }}><DeleteIcon fontSize="small" /></IconButton>
+                </Box>
+              ))}
+              <Button size="small" startIcon={<AddIcon />} onClick={() => setForm((f) => ({ ...f, parameters: [...(f.parameters || []), { name: '', value: '' }] }))} sx={{ color: 'primary.main', mt: 0.5 }}>Add parameter</Button>
+            </AccordionDetails>
+          </Accordion>
+          <Accordion disableGutters sx={{ bgcolor: 'transparent', boxShadow: 'none', '&:before': { display: 'none' }, border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'text.secondary' }} />} sx={{ '& .MuiAccordionSummary-content': { color: 'text.primary' } }}>
+              <Typography variant="subtitle2" sx={{ color: 'text.primary' }}>Headers</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              {(form.headers || [{ key: '', value: '' }]).map((row, i) => (
+                <Box key={i} sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+                  <TextField size="small" placeholder="Header name" value={row.key} onChange={(e) => setForm((f) => ({ ...f, headers: f.headers.map((r, j) => j === i ? { ...r, key: e.target.value } : r) }))} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                  <TextField size="small" placeholder="Value" value={row.value} onChange={(e) => setForm((f) => ({ ...f, headers: f.headers.map((r, j) => j === i ? { ...r, value: e.target.value } : r) }))} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                  <IconButton size="small" onClick={() => setForm((f) => ({ ...f, headers: f.headers.filter((_, j) => j !== i).length ? f.headers.filter((_, j) => j !== i) : [{ key: '', value: '' }] }))} sx={{ color: 'text.secondary' }}><DeleteIcon fontSize="small" /></IconButton>
+                </Box>
+              ))}
+              <Button size="small" startIcon={<AddIcon />} onClick={() => setForm((f) => ({ ...f, headers: [...(f.headers || []), { key: '', value: '' }] }))} sx={{ color: 'primary.main', mt: 0.5 }}>Add header</Button>
+            </AccordionDetails>
+          </Accordion>
+          <Accordion disableGutters sx={{ bgcolor: 'transparent', boxShadow: 'none', '&:before': { display: 'none' }, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'text.secondary' }} />} sx={{ '& .MuiAccordionSummary-content': { color: 'text.primary' } }}>
+              <Typography variant="subtitle2" sx={{ color: 'text.primary' }}>Authorization</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <FormControl fullWidth size="small" sx={{ mb: 2, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}>
+                <InputLabel>Type</InputLabel>
+                <Select value={form.auth?.type || 'none'} onChange={(e) => setForm((f) => ({ ...f, auth: { ...f.auth, type: e.target.value } }))} label="Type">
+                  {AUTH_TYPES.map((a) => (<MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>))}
+                </Select>
+              </FormControl>
+              {form.auth?.type === 'bearer' && (
+                <TextField fullWidth size="small" label="Token" type="password" placeholder="Use {{var}} for variables" value={form.auth.token || ''} onChange={(e) => setForm((f) => ({ ...f, auth: { ...f.auth, token: e.target.value } }))} sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+              )}
+              {form.auth?.type === 'basic' && (
+                <>
+                  <TextField fullWidth size="small" label="Username" value={form.auth.username || ''} onChange={(e) => setForm((f) => ({ ...f, auth: { ...f.auth, username: e.target.value } }))} sx={{ mb: 1, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                  <TextField fullWidth size="small" label="Password" type="password" value={form.auth.password || ''} onChange={(e) => setForm((f) => ({ ...f, auth: { ...f.auth, password: e.target.value } }))} sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                </>
+              )}
+            </AccordionDetails>
+          </Accordion>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditOpen(false)} disabled={saving} sx={{ color: 'text.secondary' }}>Cancel</Button>

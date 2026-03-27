@@ -27,6 +27,25 @@ import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
+import Accordion from '@mui/material/Accordion';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+
+const BODY_PREVIEW_LEN = 100;
+const AUTH_STEP_OPTIONS = [{ value: '', label: 'Use endpoint default' }, { value: 'bearer', label: 'Bearer Token' }, { value: 'basic', label: 'Basic Auth' }];
+
+function queryRows(step) {
+  const q = step.query && typeof step.query === 'object' ? step.query : {};
+  const arr = Object.entries(q).map(([k, v]) => ({ key: k, value: v != null ? String(v) : '' }));
+  return arr.length ? arr : [{ key: '', value: '' }];
+}
+function headerRows(step) {
+  const h = step.headers && typeof step.headers === 'object' ? step.headers : {};
+  const arr = Object.entries(h).map(([k, v]) => ({ key: k, value: v != null ? String(v) : '' }));
+  return arr.length ? arr : [{ key: '', value: '' }];
+}
 
 export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun, onViewReport }) {
   const [test, setTest] = useState(null);
@@ -44,6 +63,9 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
   const [runResultModalOpen, setRunResultModalOpen] = useState(false);
   const [runReport, setRunReport] = useState(null);
   const [runError, setRunError] = useState(null);
+  const [bodyModalOpen, setBodyModalOpen] = useState(false);
+  const [bodyModalStepIndex, setBodyModalStepIndex] = useState(null);
+  const [bodyModalValue, setBodyModalValue] = useState('');
 
   useEffect(() => {
     if (!testId || !window.electronAPI) return;
@@ -319,6 +341,38 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
           <Button onClick={handleDeleteTest} disabled={deleteLoading} color="error" variant="contained">Delete</Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog open={bodyModalOpen} onClose={() => setBodyModalOpen(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { bgcolor: 'background.paper' } }}>
+        <DialogTitle sx={{ color: 'text.primary' }}>Edit request body</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            minRows={16}
+            maxRows={32}
+            value={bodyModalValue}
+            onChange={(e) => setBodyModalValue(e.target.value)}
+            placeholder='{"key": "value"}'
+            sx={{ mt: 1, fontFamily: 'monospace', fontSize: '0.875rem', '& .MuiOutlinedInput-root': { color: 'text.primary', alignItems: 'flex-start' } }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBodyModalOpen(false)} sx={{ color: 'text.secondary' }}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => {
+              if (bodyModalStepIndex != null && test?.steps?.[bodyModalStepIndex]) {
+                handleApiStepChange(bodyModalStepIndex, 'body', bodyModalValue);
+              }
+              setBodyModalOpen(false);
+            }}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {!isApiTest && <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>Page: {page?.title || test.pageId}</Typography>}
       <Paper sx={{ p: 2, mb: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -432,15 +486,56 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
                     </Select>
                   </FormControl>
                   {apiAction === 'request' && (
-                    <TextField
-                      size="small"
-                      placeholder='Body (JSON, use {{var}})'
-                      value={typeof step.body === 'string' ? step.body : (step.body ? JSON.stringify(step.body, null, 2) : '{}')}
-                      onChange={(e) => handleApiStepChange(index, 'body', e.target.value)}
-                      multiline
-                      minRows={2}
-                      sx={{ minWidth: 200, flex: 1, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
-                    />
+                    <>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 200, flex: 1, flexWrap: 'wrap' }}>
+                        <Box sx={{ flex: 1, minWidth: 120 }}>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>Body (JSON)</Typography>
+                          <Box sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'text.secondary', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 48, overflow: 'hidden', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1, bgcolor: 'action.hover' }}>
+                            {(typeof step.body === 'string' ? step.body : (step.body ? JSON.stringify(step.body, null, 2) : '{}')).slice(0, BODY_PREVIEW_LEN)}
+                            {((typeof step.body === 'string' ? step.body : (step.body ? JSON.stringify(step.body) : '{}')).length > BODY_PREVIEW_LEN) ? '…' : ''}
+                          </Box>
+                        </Box>
+                        <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => { setBodyModalStepIndex(index); setBodyModalValue(typeof step.body === 'string' ? step.body : (step.body ? JSON.stringify(step.body, null, 2) : '{}')); setBodyModalOpen(true); }} sx={{ color: 'primary.main', alignSelf: 'flex-end' }}>Open in window</Button>
+                      </Box>
+                      <Accordion disableGutters sx={{ width: '100%', bgcolor: 'transparent', boxShadow: 'none', '&:before': { display: 'none' }, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                        <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'text.secondary' }} />} sx={{ minHeight: 40, '& .MuiAccordionSummary-content': { color: 'text.primary' } }}><Typography variant="caption">Query, Headers, Auth</Typography></AccordionSummary>
+                        <AccordionDetails sx={{ pt: 0 }}>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>Query parameters</Typography>
+                          {queryRows(step).map((row, i) => (
+                            <Box key={i} sx={{ display: 'flex', gap: 0.5, mb: 0.5, alignItems: 'center' }}>
+                              <TextField size="small" placeholder="Key" value={row.key} onChange={(e) => { const v = e.target.value; const rows = queryRows(step); const next = {}; rows.forEach((r, j) => { const k = j === i ? v : r.key; const val = j === i ? row.value : r.value; if (k != null && String(k).trim() !== '') next[String(k).trim()] = val; }); handleApiStepChange(index, 'query', next); }} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                              <TextField size="small" placeholder="Value" value={row.value} onChange={(e) => { const v = e.target.value; const rows = queryRows(step); const next = {}; rows.forEach((r, j) => { const k = r.key; const val = j === i ? v : r.value; if (k != null && String(k).trim() !== '') next[String(k).trim()] = val; }); handleApiStepChange(index, 'query', next); }} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                              <IconButton size="small" onClick={() => { const rows = queryRows(step).filter((_, j) => j !== i); const next = rows.length ? rows.reduce((o, r) => ({ ...o, [r.key]: r.value }), {}) : {}; handleApiStepChange(index, 'query', next); }} sx={{ color: 'text.secondary' }}><DeleteIcon fontSize="small" /></IconButton>
+                            </Box>
+                          ))}
+                          <Button size="small" startIcon={<AddIcon />} onClick={() => handleApiStepChange(index, 'query', { ...(step.query || {}), '': '' })} sx={{ color: 'primary.main', mt: 0.5 }}>Add query param</Button>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1, mb: 0.5 }}>Headers</Typography>
+                          {headerRows(step).map((row, i) => (
+                            <Box key={i} sx={{ display: 'flex', gap: 0.5, mb: 0.5, alignItems: 'center' }}>
+                              <TextField size="small" placeholder="Header" value={row.key} onChange={(e) => { const v = e.target.value; const rows = headerRows(step); const next = {}; rows.forEach((r, j) => { const k = j === i ? v : r.key; const val = j === i ? row.value : r.value; if (k != null && String(k).trim() !== '') next[String(k).trim()] = val; }); handleApiStepChange(index, 'headers', next); }} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                              <TextField size="small" placeholder="Value" value={row.value} onChange={(e) => { const v = e.target.value; const rows = headerRows(step); const next = {}; rows.forEach((r, j) => { const k = r.key; const val = j === i ? v : r.value; if (k != null && String(k).trim() !== '') next[String(k).trim()] = val; }); handleApiStepChange(index, 'headers', next); }} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                              <IconButton size="small" onClick={() => { const rows = headerRows(step).filter((_, j) => j !== i); const next = rows.length ? rows.reduce((o, r) => ({ ...o, [r.key]: r.value }), {}) : {}; handleApiStepChange(index, 'headers', next); }} sx={{ color: 'text.secondary' }}><DeleteIcon fontSize="small" /></IconButton>
+                            </Box>
+                          ))}
+                          <Button size="small" startIcon={<AddIcon />} onClick={() => handleApiStepChange(index, 'headers', { ...(step.headers || {}), '': '' })} sx={{ color: 'primary.main', mt: 0.5 }}>Add header</Button>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1, mb: 0.5 }}>Auth override</Typography>
+                          <FormControl size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}>
+                            <Select value={(step.auth && (step.auth.type === 'bearer' || step.auth.type === 'basic')) ? step.auth.type : ''} onChange={(e) => { const v = e.target.value; handleApiStepChange(index, 'auth', v ? (v === 'bearer' ? { type: 'bearer', token: '' } : { type: 'basic', username: '', password: '' }) : null); }} displayEmpty sx={{ color: 'text.primary' }}>
+                              {AUTH_STEP_OPTIONS.map((o) => (<MenuItem key={o.value || 'default'} value={o.value}>{o.label}</MenuItem>))}
+                            </Select>
+                          </FormControl>
+                          {step.auth?.type === 'bearer' && (
+                            <TextField size="small" fullWidth placeholder="Token (use {{var}})" type="password" value={step.auth.token ?? ''} onChange={(e) => handleApiStepChange(index, 'auth', { type: 'bearer', token: e.target.value })} sx={{ mt: 0.5, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                          )}
+                          {step.auth?.type === 'basic' && (
+                            <Box sx={{ mt: 0.5 }}>
+                              <TextField size="small" fullWidth placeholder="Username" value={step.auth.username ?? ''} onChange={(e) => handleApiStepChange(index, 'auth', { ...step.auth, username: e.target.value })} sx={{ mb: 0.5, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                              <TextField size="small" fullWidth placeholder="Password" type="password" value={step.auth.password ?? ''} onChange={(e) => handleApiStepChange(index, 'auth', { ...step.auth, password: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+                            </Box>
+                          )}
+                        </AccordionDetails>
+                      </Accordion>
+                    </>
                   )}
                   {apiAction === 'assertStatus' && (
                     <TextField

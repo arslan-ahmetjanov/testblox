@@ -1,3 +1,4 @@
+const path = require('path');
 const { ipcMain } = require('electron');
 const llmConfig = require('../store/llmConfig');
 const { getCurrentPath } = require('./workspace');
@@ -5,7 +6,12 @@ const { getCurrentPath } = require('./workspace');
 function registerLlmIpc() {
   ipcMain.handle('llm:getConfig', (_, scope) => {
     const userData = require('electron').app.getPath('userData');
-    const workspacePath = scope === 'workspace' ? getCurrentPath() : null;
+    const workspacePath = getCurrentPath();
+    if (workspacePath) {
+      try {
+        require('dotenv').config({ path: path.join(workspacePath, '.env') });
+      } catch (_) {}
+    }
     const globalConfig = llmConfig.getGlobalConfig(userData);
     const workspaceConfig = workspacePath ? llmConfig.getWorkspaceConfig(workspacePath) : null;
     const effective = llmConfig.getEffectiveConfig(userData, workspacePath);

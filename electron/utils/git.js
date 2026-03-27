@@ -108,10 +108,19 @@ async function commit(gitRootPath, message) {
   await git.commit(message);
 }
 
+const DEFAULT_GITIGNORE = `# TestBlox
+reports/
+node_modules/
+`;
+
 async function init(gitRootPath) {
   const git = getGit(gitRootPath);
   await git.init();
   await git.raw(['branch', '-M', 'main']);
+  const gitignorePath = path.join(gitRootPath, '.gitignore');
+  if (!fs.existsSync(gitignorePath)) {
+    fs.writeFileSync(gitignorePath, DEFAULT_GITIGNORE, 'utf8');
+  }
 }
 
 async function fetch(gitRootPath, remote = 'origin') {

@@ -3,6 +3,40 @@ const filestore = require('../store/filestore');
 const reportsStore = require('../store/reports');
 const { substitute } = require('./playwrightRunner');
 
+/** Build query object from endpoint.parameters (array of { name, value } or { name, in, value }). */
+function parametersToQuery(parameters, varsMap) {
+  if (!Array.isArray(parameters) || parameters.length === 0) return {};
+  const out = {};
+  for (const p of parameters) {
+    const name = p.name;
+    if (!name) continue;
+    const inParam = p.in;
+    if (inParam && inParam !== 'query') continue;
+    const val = p.value != null ? substitute(String(p.value), varsMap) : '';
+    out[name] = val;
+  }
+  return out;
+}
+
+/** Merge endpoint auth with step auth; apply to axios config (headers and/or auth). */
+function applyAuth(axiosConfig, endpointAuth, stepAuth, varsMap) {
+  const auth = stepAuth && (stepAuth.type === 'bearer' || stepAuth.type === 'basic')
+    ? stepAuth
+    : endpointAuth && (endpointAuth.type === 'bearer' || endpointAuth.type === 'basic')
+      ? endpointAuth
+      : null;
+  if (!auth) return;
+  if (auth.type === 'bearer' && auth.token != null) {
+    const token = substitute(String(auth.token), varsMap);
+    axiosConfig.headers = axiosConfig.headers || {};
+    axiosConfig.headers.Authorization = `Bearer ${token}`;
+  } else if (auth.type === 'basic' && auth.username != null) {
+    const username = substitute(String(auth.username), varsMap);
+    const password = substitute(String(auth.password || ''), varsMap);
+    axiosConfig.auth = { username, password };
+  }
+}
+
 /**
  * Run an API test and return report.
  */
@@ -47,16 +81,23 @@ async function runApiTest(workspacePath, testId, options = {}) {
           body = substitute(body, varsMap);
           try { body = body ? JSON.parse(body) : undefined; } catch (_) { /* send as string */ }
         }
-        const headers = step.headers && typeof step.headers === 'object' ? step.headers : {};
-        const res = await axios.request({
+        const endpointHeaders = endpoint.headers && typeof endpoint.headers === 'object' ? endpoint.headers : {};
+        const stepHeaders = step.headers && typeof step.headers === 'object' ? step.headers : {};
+        const headers = { 'Content-Type': 'application/json', ...endpointHeaders, ...stepHeaders };
+        const endpointQuery = parametersToQuery(endpoint.parameters, varsMap);
+        const stepQuery = step.query && typeof step.query === 'object' ? step.query : {};
+        const params = { ...endpointQuery, ...stepQuery };
+        const axiosConfig = {
           url,
           method,
           data: method !== 'GET' ? body : undefined,
-          params: step.query,
-          headers: { 'Content-Type': 'application/json', ...headers },
+          params,
+          headers,
           timeout: 30000,
           validateStatus: () => true,
-        });
+        };
+        applyAuth(axiosConfig, endpoint.auth, step.auth, varsMap);
+        const res = await axios.request(axiosConfig);
         lastResponse = res;
         stepValue = `${method} ${path} → ${res.status}`;
         stepSuccess = true;

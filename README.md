@@ -104,6 +104,8 @@ Output: `dist/TestBlox Setup 1.0.0.exe` and `dist/TestBlox 1.0.0.exe` (portable)
    - **Model:** e.g. `openai/gpt-4o-mini` or another model you prefer.
 4. Save. You can now use "Generate with AI" and "Generate from selection".
 
+**Using env instead of storing the key:** You can set `TESTBLOX_LLM_API_KEY` (and optionally `TESTBLOX_LLM_MODEL`, `TESTBLOX_LLM_API_BASE_URL`) in your environment or in a `.env` file in the workspace root. The app loads workspace `.env` before calling the LLM, so the key is never saved in Settings or in `.testblox/llm.json`. In CI, set these variables in your pipeline (e.g. GitHub Secrets, GitLab CI variables).
+
 ---
 
 ## Project structure (workspace)
@@ -120,6 +122,17 @@ your-project/
 ```
 
 Keep `.testblox/`, `pages/`, `tests/`, and `endpoints/` in Git if you want tests versioned with the project.
+
+---
+
+## Variables and secrets
+
+Variable values (logins, passwords, tokens) are stored in a **`.env`** file in the workspace root. The file is created when you init a workspace or when you save your first variable. It is listed in `.gitignore`, so secrets are not committed.
+
+- **Variables without a pattern** — name and value: name in `.testblox/variables.json`, value in `.env`. Use `{{variableName}}` in steps and auth fields.
+- **Variables with a pattern** (regex) — only the pattern is stored; the value is generated on each run. They are not written to `.env`.
+- **In CI** — set the same variable names as environment variables (e.g. GitHub Secrets → env, GitLab CI variables).
+- **Direct env reference** — in any field (e.g. auth token or password) you can use `{{env:VAR_NAME}}` to read from `process.env.VAR_NAME` (from `.env` or CI env).
 
 ---
 

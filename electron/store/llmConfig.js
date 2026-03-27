@@ -60,19 +60,27 @@ function getWorkspaceConfig(workspaceRoot) {
 }
 
 /**
- * Effective config: workspace override first, then global. For API calls (e.g. OpenRouter).
+ * Effective config: workspace override first, then global, then env. For API calls (e.g. OpenRouter).
+ * Env: TESTBLOX_LLM_API_KEY, TESTBLOX_LLM_MODEL, TESTBLOX_LLM_API_BASE_URL.
  */
 function getEffectiveConfig(userDataPath, workspaceRoot) {
   const workspace = workspaceRoot ? getWorkspaceConfig(workspaceRoot) : null;
   const globalConfig = getGlobalConfig(userDataPath);
+  let effective;
   if (workspace && (workspace.apiKey || workspace.modelName || workspace.apiBaseUrl)) {
-    return {
+    effective = {
       apiKey: workspace.apiKey ?? globalConfig.apiKey,
       modelName: workspace.modelName ?? globalConfig.modelName,
       apiBaseUrl: workspace.apiBaseUrl ?? globalConfig.apiBaseUrl,
     };
+  } else {
+    effective = { ...globalConfig };
   }
-  return globalConfig;
+  return {
+    apiKey: process.env.TESTBLOX_LLM_API_KEY ?? effective.apiKey,
+    modelName: process.env.TESTBLOX_LLM_MODEL ?? effective.modelName,
+    apiBaseUrl: process.env.TESTBLOX_LLM_API_BASE_URL ?? effective.apiBaseUrl,
+  };
 }
 
 function saveGlobalConfig(userDataPath, config) {
