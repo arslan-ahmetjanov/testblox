@@ -1,3 +1,4 @@
+const path = require('path');
 const playwright = require('playwright');
 const filestore = require('../store/filestore');
 const reportsStore = require('../store/reports');
@@ -10,18 +11,58 @@ function resolveVariableValue(v) {
       const RandExp = require('randexp');
       return new RandExp(new RegExp(pattern)).gen();
     } catch {
-      return v.value != null ? String(v.value) : '';
+      return '';
     }
   }
-  return v.value != null ? String(v.value) : '';
+  const name = v.name != null ? String(v.name).trim() : '';
+  return name ? (process.env[name] ?? '') : '';
 }
 
 /**
- * Replace {{variableName}} in str with values from varsMap (name -> value).
+ * Replace {{variableName}} or {{env:VAR_NAME}} in str with values from varsMap or process.env.
  */
 function substitute(str, varsMap) {
   if (str == null || typeof str !== 'string') return str;
-  return str.replace(/\{\{(\w+)\}\}/g, (_, name) => (varsMap && varsMap[name] != null ? String(varsMap[name]) : `{{${name}}}`));
+  return str.replace(/\{\{(env:)?(\w+)\}\}/g, (_, envPrefix, name) => {
+    if (envPrefix === 'env:') return process.env[name] ?? '';
+    return varsMap && varsMap[name] != null ? String(varsMap[name]) : `{{${name}}}`;
+  });
+}
+
+/** Build query object from endpoint.parameters (array of { name, value } or { name, in, value }). */
+function parametersToQuery(parameters, varsMap) {
+  if (!Array.isArray(parameters) || parameters.length === 0) return {};
+  const out = {};
+  for (const p of parameters) {
+    const name = p.name;
+    if (!name) continue;
+    const inParam = p.in;
+    if (inParam && inParam !== 'query') continue;
+    const val = p.value != null ? substitute(String(p.value), varsMap) : '';
+    out[name] = val;
+  }
+  return out;
+}
+
+/** Build auth headers from endpoint/step auth for fetch (Bearer or Basic). */
+function buildAuthHeaders(endpointAuth, stepAuth, varsMap) {
+  const auth = stepAuth && (stepAuth.type === 'bearer' || stepAuth.type === 'basic')
+    ? stepAuth
+    : endpointAuth && (endpointAuth.type === 'bearer' || endpointAuth.type === 'basic')
+      ? endpointAuth
+      : null;
+  if (!auth) return {};
+  if (auth.type === 'bearer' && auth.token != null) {
+    const token = substitute(String(auth.token), varsMap);
+    return { Authorization: `Bearer ${token}` };
+  }
+  if (auth.type === 'basic' && auth.username != null) {
+    const username = substitute(String(auth.username), varsMap);
+    const password = substitute(String(auth.password || ''), varsMap);
+    const encoded = Buffer.from(`${username}:${password}`, 'utf8').toString('base64');
+    return { Authorization: `Basic ${encoded}` };
+  }
+  return {};
 }
 
 const MAX_SHARED_STEP_DEPTH = 5;
@@ -82,6 +123,7 @@ function resolveStep(step, page, actions) {
  */
 async function runTest(workspacePath, testId, options = {}) {
   const { onProgress = () => {}, saveReportToFile = true, screenshotOnFailureOnly = false } = options;
+  require('dotenv').config({ path: path.join(workspacePath, '.env') });
   const test = filestore.readTest(workspacePath, testId);
   if (!test) throw new Error(`Test ${testId} not found`);
   const actions = filestore.readActions(workspacePath);
@@ -203,8 +245,13 @@ async function runTest(workspacePath, testId, options = {}) {
               body = substitute(body, varsMap);
               try { body = body ? JSON.parse(body) : undefined; } catch (_) {}
             }
-            const headers = step.headers && typeof step.headers === 'object' ? step.headers : {};
-            const query = step.query || {};
+            const endpointHeaders = endpoint.headers && typeof endpoint.headers === 'object' ? endpoint.headers : {};
+            const stepHeaders = step.headers && typeof step.headers === 'object' ? step.headers : {};
+            const authHeaders = buildAuthHeaders(endpoint.auth, step.auth, varsMap);
+            const allHeaders = { 'Content-Type': 'application/json', ...endpointHeaders, ...stepHeaders, ...authHeaders };
+            const endpointQuery = parametersToQuery(endpoint.parameters, varsMap);
+            const stepQuery = step.query && typeof step.query === 'object' ? step.query : {};
+            const query = { ...endpointQuery, ...stepQuery };
             const queryStr = Object.keys(query).length
               ? '?' + new URLSearchParams(query).toString()
               : '';
@@ -213,13 +260,13 @@ async function runTest(workspacePath, testId, options = {}) {
             stepRequest = {
               method,
               url,
-              headers: { 'Content-Type': 'application/json', ...headers },
+              headers: allHeaders,
               body: method !== 'GET' && body != null ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
             };
 
             const res = await requestContext.fetch(url, {
               method,
-              headers: stepRequest.headers,
+              headers: allHeaders,
               data: method !== 'GET' ? body : undefined,
               timeout: 30000,
             });

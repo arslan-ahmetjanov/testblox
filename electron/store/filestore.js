@@ -7,6 +7,7 @@ const WORKSPACE_FILE = 'workspace.json';
 const ACTIONS_FILE = 'actions.json';
 const DEFAULT_IGNORE = ['node_modules', '.git', 'reports'];
 const VARIABLES_FILE = 'variables.json';
+const ENV_FILE = '.env';
 const SHARED_STEPS_FILE = 'sharedSteps.json';
 const PAGES_DIR = 'pages';
 const TESTS_DIR = 'tests';
@@ -93,11 +94,16 @@ function initWorkspace(rootPath, title = 'My Workspace') {
   writeJsonAtomic(p.variables, { variables: [] });
   writeJsonAtomic(p.sharedSteps, { sharedSteps: [] });
 
+  const envPath = getEnvPath(rootPath);
+  if (!fs.existsSync(envPath)) fs.writeFileSync(envPath, '# TestBlox variables\n', 'utf8');
+
   const gitignorePath = path.join(rootPath, '.gitignore');
   try {
     let content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : '';
     if (content && !content.includes('reports/')) content += '\nreports/\n';
     else if (!content.trim()) content = 'reports/\n';
+    if (!content.includes('.env')) content += '\n.env\n';
+    if (!content.includes('.env.local')) content += '\n.env.local\n';
     if (content.trim()) fs.writeFileSync(gitignorePath, content, 'utf8');
   } catch (_) {}
 
@@ -128,6 +134,58 @@ function writeWorkspaceMeta(rootPath, data) {
   writeJsonAtomic(p.workspace, data);
 }
 
+/**
+ * Path to .env file in workspace root.
+ * @param {string} rootPath
+ * @returns {string}
+ */
+function getEnvPath(rootPath) {
+  return path.join(rootPath, ENV_FILE);
+}
+
+/**
+ * Read .env file and return key-value object. Returns {} if file missing or empty.
+ * @param {string} rootPath
+ * @returns {Record<string, string>}
+ */
+function readEnvFile(rootPath) {
+  const envPath = getEnvPath(rootPath);
+  try {
+    if (!fs.existsSync(envPath)) return {};
+    const raw = fs.readFileSync(envPath, 'utf8');
+    const { parse } = require('dotenv');
+    return parse(raw) || {};
+  } catch (e) {
+    console.error('readEnvFile', envPath, e);
+    return {};
+  }
+}
+
+/**
+ * Write .env file. Merges with existing: updates/adds keys from keyValueObj, removes keys in keysToRemove. Preserves other keys in .env.
+ * @param {string} rootPath
+ * @param {Record<string, string>} keyValueObj variable name -> value (only variables without pattern)
+ * @param {string[]} [keysToRemove] variable names that were in .env but should be removed (e.g. deleted variables)
+ */
+function writeEnvFile(rootPath, keyValueObj, keysToRemove = []) {
+  const envPath = getEnvPath(rootPath);
+  const current = readEnvFile(rootPath);
+  const next = { ...current };
+  for (const k of keysToRemove) delete next[k];
+  for (const [k, v] of Object.entries(keyValueObj)) next[k] = String(v);
+  const lines = [];
+  for (const [k, v] of Object.entries(next)) {
+    if (/[\r\n"\\]/.test(v)) {
+      const escaped = v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+      lines.push(`${k}="${escaped}"`);
+    } else {
+      lines.push(`${k}=${v}`);
+    }
+  }
+  ensureDir(path.dirname(envPath));
+  fs.writeFileSync(envPath, lines.join('\n') + (lines.length ? '\n' : ''), 'utf8');
+}
+
 function readActions(rootPath) {
   const p = getPaths(rootPath);
   const obj = readJsonSafe(p.actions, { actions: [] });
@@ -142,14 +200,51 @@ function readActions(rootPath) {
 function readVariables(rootPath) {
   const p = getPaths(rootPath);
   const obj = readJsonSafe(p.variables, { variables: [] });
-  return Array.isArray(obj.variables) ? obj.variables : [];
+  const list = Array.isArray(obj.variables) ? obj.variables : [];
+  const envObj = readEnvFile(rootPath);
+  return list
+    .filter((v) => v && v.name != null && String(v.name).trim() !== '')
+    .map((v) => {
+      const name = String(v.name).trim();
+      const hasPattern = v.valuePattern != null && String(v.valuePattern).trim() !== '';
+      const def = { id: v.id || genId(), name, valuePattern: hasPattern ? String(v.valuePattern).trim() : undefined };
+      if (hasPattern) return { ...def, value: '' };
+      const value = envObj[name] != null ? String(envObj[name]) : (v.value != null ? String(v.value) : '');
+      return { ...def, value };
+    });
 }
 
 function writeVariables(rootPath, variables) {
   const p = getPaths(rootPath);
   ensureDir(p.base);
-  writeJsonAtomic(p.variables, { variables: Array.isArray(variables) ? variables : [] });
-  return variables;
+  const prevList = readVariables(rootPath);
+  const prevNamesNoPattern = prevList
+    .filter((v) => !(v.valuePattern != null && String(v.valuePattern).trim() !== ''))
+    .map((v) => String(v.name).trim());
+  const normalized = (Array.isArray(variables) ? variables : [])
+    .filter((v) => v && v.name != null && String(v.name).trim() !== '')
+    .map((v) => ({
+      id: v.id || genId(),
+      name: String(v.name).trim(),
+      valuePattern: v.valuePattern != null && String(v.valuePattern).trim() !== '' ? String(v.valuePattern).trim() : undefined,
+    }));
+  const envObj = {};
+  const newNamesNoPattern = [];
+  (Array.isArray(variables) ? variables : []).forEach((v) => {
+    if (!v || v.name == null || String(v.name).trim() === '') return;
+    const name = String(v.name).trim();
+    const hasPattern = v.valuePattern != null && String(v.valuePattern).trim() !== '';
+    if (!hasPattern) {
+      newNamesNoPattern.push(name);
+      envObj[name] = v.value != null ? String(v.value) : '';
+    }
+  });
+  const keysToRemove = prevNamesNoPattern.filter((n) => !newNamesNoPattern.includes(n));
+  const envPath = getEnvPath(rootPath);
+  if (!fs.existsSync(envPath)) fs.writeFileSync(envPath, '# TestBlox variables\n', 'utf8');
+  writeEnvFile(rootPath, envObj, keysToRemove);
+  writeJsonAtomic(p.variables, { variables: normalized });
+  return readVariables(rootPath);
 }
 
 function listSharedSteps(rootPath) {
@@ -488,6 +583,8 @@ function createEndpoint(rootPath, data) {
     baseUrl: data.baseUrl || '',
     requestBody: data.requestBody || null,
     parameters: data.parameters || [],
+    headers: data.headers && typeof data.headers === 'object' ? data.headers : {},
+    auth: data.auth && typeof data.auth === 'object' ? data.auth : null,
     responses: data.responses || {},
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -508,6 +605,8 @@ function updateEndpoint(rootPath, endpointId, data) {
   if (data.baseUrl !== undefined) endpoint.baseUrl = data.baseUrl;
   if (data.requestBody !== undefined) endpoint.requestBody = data.requestBody;
   if (Array.isArray(data.parameters)) endpoint.parameters = data.parameters;
+  if (data.headers !== undefined) endpoint.headers = data.headers && typeof data.headers === 'object' ? data.headers : {};
+  if (data.auth !== undefined) endpoint.auth = data.auth && typeof data.auth === 'object' ? data.auth : null;
   if (data.responses !== undefined) endpoint.responses = data.responses;
   writeEndpoint(rootPath, endpoint);
   return endpoint;
@@ -529,6 +628,9 @@ function isWorkspace(rootPath) {
 
 module.exports = {
   getPaths,
+  getEnvPath,
+  readEnvFile,
+  writeEnvFile,
   initWorkspace,
   readWorkspaceMeta,
   writeWorkspaceMeta,

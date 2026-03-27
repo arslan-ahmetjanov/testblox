@@ -76,6 +76,7 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
   const [commitOpen, setCommitOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState('');
   const [gitBusy, setGitBusy] = useState(false);
+  const [initGitBusy, setInitGitBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [llmConfig, setLlmConfig] = useState({ global: {}, effective: {}, isValid: false });
   const [llmForm, setLlmForm] = useState({ apiKey: '', modelName: '', apiBaseUrl: '', scope: 'global' });
@@ -260,6 +261,21 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
       console.error(e);
     } finally {
       setGitBusy(false);
+    }
+  };
+
+  const handleInitGit = async () => {
+    if (!workspacePath || !window.electronAPI) return;
+    setInitGitBusy(true);
+    try {
+      await window.electronAPI.gitInit(workspacePath);
+      await loadGit();
+      setSnackbar({ open: true, message: 'Repository initialized.', severity: 'success' });
+    } catch (e) {
+      console.error(e);
+      setSnackbar({ open: true, message: e?.message || 'Failed to initialize repository.', severity: 'error' });
+    } finally {
+      setInitGitBusy(false);
     }
   };
 
@@ -558,6 +574,17 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
       <Button size="small" startIcon={<SettingsIcon />} onClick={openSettings} sx={{ color: 'text.primary' }}>
         Settings
       </Button>
+      {!gitRoot && workspacePath && (
+        <Button
+          size="small"
+          startIcon={<AccountTreeIcon />}
+          onClick={handleInitGit}
+          disabled={initGitBusy}
+          sx={{ color: 'text.primary' }}
+        >
+          Initialize repository
+        </Button>
+      )}
       {gitRoot && (
         <>
           <AccountTreeIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
@@ -779,8 +806,11 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
             value={llmForm.apiKey}
             onChange={(e) => setLlmForm((f) => ({ ...f, apiKey: e.target.value }))}
             placeholder="sk-..."
-            sx={{ mb: 2, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
+            sx={{ mb: 0.5, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
           />
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 2 }}>
+            Or set TESTBLOX_LLM_API_KEY in env (e.g. in .env in workspace root) to avoid storing the key here.
+          </Typography>
           <TextField
             fullWidth
             label="Model name"
@@ -818,6 +848,11 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
             Add or remove remotes. origin is typically used for fetch/pull/push.
           </Typography>
+          {remotes.length === 0 && (
+            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2, fontStyle: 'italic' }}>
+              Add origin to push to GitHub or GitLab.
+            </Typography>
+          )}
           {remotes.map((r) => (
             <Box key={r.name} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
               <Typography variant="body2" sx={{ color: 'text.primary', minWidth: 80 }}>{r.name}</Typography>

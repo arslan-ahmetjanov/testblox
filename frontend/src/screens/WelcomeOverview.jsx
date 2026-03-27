@@ -11,8 +11,10 @@ export default function WelcomeOverview({
   onOpenFolder,
   onCloneSuccess,
   openCloneDialog: openCloneDialogProp,
+  onOpenCloneDialog,
   onCloseCloneDialog,
   openCreateProjectDialog: openCreateProjectDialogProp,
+  onOpenCreateProjectDialog,
   onCloseCreateProjectDialog,
 }) {
   const theme = useTheme();
@@ -145,7 +147,10 @@ export default function WelcomeOverview({
         <Button
           variant="outlined"
           startIcon={<GitHubIcon />}
-          onClick={() => { setCloneDialogOpen(true); }}
+          onClick={() => {
+            if (onOpenCloneDialog) onOpenCloneDialog();
+            else setCloneDialogOpen(true);
+          }}
           sx={{
             borderColor: theme.palette.primary.main,
             color: theme.palette.primary.main,
@@ -157,7 +162,10 @@ export default function WelcomeOverview({
         <Button
           variant="outlined"
           startIcon={<CreateNewFolderIcon />}
-          onClick={() => { setCreateProjectOpen(true); }}
+          onClick={() => {
+            if (onOpenCreateProjectDialog) onOpenCreateProjectDialog();
+            else setCreateProjectOpen(true);
+          }}
           sx={{
             borderColor: theme.palette.primary.main,
             color: theme.palette.primary.main,

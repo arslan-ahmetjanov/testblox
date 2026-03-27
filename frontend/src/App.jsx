@@ -164,8 +164,10 @@ export default function App() {
               onOpenFolder={handleOpenFolder}
               onCloneSuccess={handleCloneSuccess}
               openCloneDialog={openCloneDialog}
+              onOpenCloneDialog={() => setOpenCloneDialog(true)}
               onCloseCloneDialog={() => setOpenCloneDialog(false)}
               openCreateProjectDialog={openCreateProjectDialog}
+              onOpenCreateProjectDialog={() => setOpenCreateProjectDialog(true)}
               onCloseCreateProjectDialog={() => setOpenCreateProjectDialog(false)}
             />
           }

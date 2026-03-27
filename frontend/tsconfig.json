@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "allowJs": true,
     "target": "ES2022",
     "useDefineForClassFields": true,
     "module": "ESNext",
@@ -22,5 +23,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src/**/*.js", "src/**/*.jsx"]
 }

@@ -104,6 +104,8 @@ npm run build
    - **Model：** 如 `openai/gpt-4o-mini` 或其他模型。
 4. 保存。即可使用「Generate with AI」和「Generate from selection」。
 
+**通过环境变量设置密钥：** 可设置 `TESTBLOX_LLM_API_KEY`（及可选的 `TESTBLOX_LLM_MODEL`、`TESTBLOX_LLM_API_BASE_URL`）于环境或工作区根目录的 `.env` 文件中。应用在调用 LLM 前会加载 `.env`，密钥不会保存在设置或 `.testblox/llm.json` 中。在 CI 中请在流水线中设置这些变量（如 GitHub Secrets、GitLab CI variables）。
+
 ---
 
 ## 项目结构（工作区）
@@ -120,6 +122,17 @@ npm run build
 ```
 
 若希望测试随项目版本化，请将 `.testblox/`、`pages/`、`tests/`、`endpoints/` 纳入 Git。
+
+---
+
+## 变量与密钥
+
+变量值（登录名、密码、令牌）存放在工作区根目录的 **`.env`** 文件中。该文件在初始化项目或保存第一个变量时创建，且不提交（已列入 .gitignore）。
+
+- **无 pattern 的变量** — 名称在 `.testblox/variables.json`，值在 `.env`。在步骤和 auth 字段中使用 `{{variableName}}`。
+- **带 pattern 的变量**（正则）— variables.json 中仅存 pattern；值在每次运行时生成，不写入 .env。
+- **在 CI 中** — 通过流水线环境变量设置相同变量名（如 GitHub Secrets、GitLab CI variables）。
+- **直接引用 env** — 在任何字段（如 auth token 或 password）中可使用 `{{env:VAR_NAME}}` 从 `process.env.VAR_NAME`（来自 .env 或 CI env）取值。
 
 ---
 
