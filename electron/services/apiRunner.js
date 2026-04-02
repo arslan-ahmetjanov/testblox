@@ -2,6 +2,7 @@ const axios = require('axios');
 const filestore = require('../store/filestore');
 const reportsStore = require('../store/reports');
 const { substitute } = require('./playwrightRunner');
+const { assertHttpsRequestUrl } = require('../utils/requireHttpsUrl');
 
 /** Build query object from endpoint.parameters (array of { name, value } or { name, in, value }). */
 function parametersToQuery(parameters, varsMap) {
@@ -75,6 +76,7 @@ async function runApiTest(workspacePath, testId, options = {}) {
         const baseUrl = substitute(baseUrlStr, varsMap).trim() || '';
         const path = substitute(endpoint.path || '/', varsMap);
         const url = (baseUrl + path).replace(/([^:]\/)\/+/g, '$1');
+        assertHttpsRequestUrl(url, 'API request URL');
         const method = (endpoint.method || 'GET').toUpperCase();
         let body = step.body;
         if (typeof body === 'string') {

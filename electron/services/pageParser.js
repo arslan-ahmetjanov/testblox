@@ -1,29 +1,6 @@
-const path = require('path');
-const fs = require('fs');
-const { app } = require('electron');
 const { chromium } = require('playwright');
 const { JSDOM } = require('jsdom');
-
-function getBundledChromiumExecutablePath() {
-  if (!app.isPackaged) return null;
-  const browsersDir = path.join(process.resourcesPath, 'playwright-browsers');
-  if (!fs.existsSync(browsersDir)) return null;
-  const entries = fs.readdirSync(browsersDir, { withFileTypes: true });
-  const isWin = process.platform === 'win32';
-  for (const e of entries) {
-    if (!e.isDirectory()) continue;
-    const name = e.name;
-    if (name.startsWith('chromium_headless_shell-')) {
-      const sub = path.join(browsersDir, name, isWin ? 'chrome-headless-shell-win64' : 'chrome-headless-shell', isWin ? 'chrome-headless-shell.exe' : 'chrome-headless-shell');
-      if (fs.existsSync(sub)) return sub;
-    }
-    if (name.startsWith('chromium-')) {
-      const sub = path.join(browsersDir, name, isWin ? 'chrome-win' : 'chrome-linux', isWin ? 'chrome.exe' : 'chrome');
-      if (fs.existsSync(sub)) return sub;
-    }
-  }
-  return null;
-}
+const getBundledYandexExecutablePath = require('../utils/bundledYandexBrowser');
 
 function escapeCssSelector(value) {
   if (typeof value !== 'string') return '';
@@ -148,12 +125,11 @@ function parseInteractiveElements(html) {
 }
 
 async function parsePage(url, viewport = null) {
-  const executablePath = getBundledChromiumExecutablePath();
+  const executablePath = getBundledYandexExecutablePath();
   const launchOptions = { headless: true };
   if (executablePath) launchOptions.executablePath = executablePath;
   const browser = await chromium.launch(launchOptions);
   try {
-    // #region agent log
     const contextOptions = {};
     if (viewport && (viewport.width || viewport.height)) {
       contextOptions.viewport = {
@@ -162,8 +138,6 @@ async function parsePage(url, viewport = null) {
       };
     }
     const context = await browser.newContext(contextOptions);
-    fetch('http://127.0.0.1:7724/ingest/bf419149-d55d-42b2-8e47-1fc596c8a5f0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e6b34e'},body:JSON.stringify({sessionId:'e6b34e',location:'pageParser.js:parsePage',message:'context created',data:{hasSetViewportSize:typeof (context && context.setViewportSize) === 'function',viewportUsed:!!contextOptions.viewport},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     const page = await context.newPage();
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
     await new Promise((r) => setTimeout(r, 800));

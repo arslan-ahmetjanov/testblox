@@ -311,13 +311,6 @@ function listPages(rootPath) {
 function readPage(rootPath, pageId) {
   const p = getPaths(rootPath);
   const filePath = path.join(p.pagesDir, pageId + '.json');
-  // #region agent log
-  const exists = fs.existsSync(filePath);
-  try {
-    const logPath = path.join(rootPath, 'debug-b48e74.log');
-    fs.appendFileSync(logPath, JSON.stringify({ sessionId: 'b48e74', location: 'filestore.readPage', message: 'readPage', data: { pageId, filePath, exists }, timestamp: Date.now(), hypothesisId: 'H2' }) + '\n', 'utf8');
-  } catch (_) {}
-  // #endregion
   return readJsonSafe(filePath);
 }
 
