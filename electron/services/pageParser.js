@@ -1,6 +1,18 @@
+const { app } = require('electron');
 const { chromium } = require('playwright');
 const { JSDOM } = require('jsdom');
+const browserConfig = require('../store/browserConfig');
 const getBundledYandexExecutablePath = require('../utils/bundledYandexBrowser');
+
+function resolveParseExecutablePath() {
+  const userData = app.getPath('userData');
+  const config = browserConfig.getBrowserConfig(userData);
+  if (config.browser === 'custom' && config.executablePath) {
+    const p = String(config.executablePath).trim();
+    if (p) return p;
+  }
+  return getBundledYandexExecutablePath();
+}
 
 function escapeCssSelector(value) {
   if (typeof value !== 'string') return '';
@@ -125,7 +137,7 @@ function parseInteractiveElements(html) {
 }
 
 async function parsePage(url, viewport = null) {
-  const executablePath = getBundledYandexExecutablePath();
+  const executablePath = resolveParseExecutablePath();
   const launchOptions = { headless: true };
   if (executablePath) launchOptions.executablePath = executablePath;
   const browser = await chromium.launch(launchOptions);

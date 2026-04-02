@@ -1,5 +1,4 @@
 const path = require('path');
-const { app } = require('electron');
 const playwright = require('playwright');
 const filestore = require('../store/filestore');
 const reportsStore = require('../store/reports');
@@ -174,15 +173,15 @@ async function runTest(workspacePath, testId, options = {}) {
 
     if (hasUiSteps) {
       const userDataPath = options.userDataPath;
-      const config = userDataPath ? browserConfig.getBrowserConfig(userDataPath) : { browser: 'chromium', executablePath: null };
+      const config = userDataPath ? browserConfig.getBrowserConfig(userDataPath) : { browser: 'yandex', executablePath: null };
       const headless = options.headless !== false;
-      let engine = playwright.chromium;
+      const engine = playwright.chromium;
       const launchOpts = { headless };
-      if (config.browser === 'firefox') engine = playwright.firefox;
-      else if (config.browser === 'webkit') engine = playwright.webkit;
-      else if (config.browser === 'custom' && config.executablePath) {
-        launchOpts.executablePath = config.executablePath;
-      } else if (config.browser === 'chromium' && !launchOpts.executablePath && app.isPackaged) {
+      if (config.browser === 'custom') {
+        const p = config.executablePath != null ? String(config.executablePath).trim() : '';
+        if (!p) throw new Error('Custom browser path is not set; choose Yandex (bundled) or set an executable path in Settings');
+        launchOpts.executablePath = p;
+      } else {
         const bundled = getBundledYandexExecutablePath();
         if (bundled) launchOpts.executablePath = bundled;
       }

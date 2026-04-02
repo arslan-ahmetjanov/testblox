@@ -1,6 +1,6 @@
 {
   "name": "testblox",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "TestBlox - no-code test automation with Git integration",
   "main": "electron/main.js",
   "private": true,

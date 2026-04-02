@@ -81,7 +81,7 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
   const [llmConfig, setLlmConfig] = useState({ global: {}, effective: {}, isValid: false });
   const [llmForm, setLlmForm] = useState({ apiKey: '', modelName: '', apiBaseUrl: '', scope: 'global' });
   const [llmSaving, setLlmSaving] = useState(false);
-  const [browserForm, setBrowserForm] = useState({ browser: 'chromium', executablePath: '' });
+  const [browserForm, setBrowserForm] = useState({ browser: 'yandex', executablePath: '' });
   const [addPageOpen, setAddPageOpen] = useState(false);
   const [newPageTitle, setNewPageTitle] = useState('');
   const [newPageUrl, setNewPageUrl] = useState('');
@@ -397,7 +397,7 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
       scope: 'global',
     });
     const bc = await window.electronAPI.browserGetConfig();
-    setBrowserForm({ browser: bc.browser || 'chromium', executablePath: bc.executablePath || '' });
+    setBrowserForm({ browser: bc.browser === 'custom' ? 'custom' : 'yandex', executablePath: bc.executablePath || '' });
   };
 
   const handleLlmSave = async () => {
@@ -763,7 +763,7 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
         <DialogContent>
           <Typography variant="subtitle2" sx={{ color: 'primary.main', mt: 1, mb: 1 }}>Browser for tests</Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
-            Browser used when running UI tests (e.g. Chromium, Firefox, WebKit, or custom executable).
+            Yandex Browser (bundled with the app) or any Chromium-based executable you choose.
           </Typography>
           <FormControl fullWidth size="small" sx={{ mb: 2, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}>
             <InputLabel id="browser-select-label" sx={{ color: 'text.secondary' }}>Browser</InputLabel>
@@ -774,9 +774,7 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
               onChange={(e) => setBrowserForm((f) => ({ ...f, browser: e.target.value }))}
               sx={{ color: 'text.primary', '.MuiOutlinedInput-notchedOutline': { borderColor: 'divider' } }}
             >
-              <MenuItem value="chromium">Chromium</MenuItem>
-              <MenuItem value="firefox">Firefox</MenuItem>
-              <MenuItem value="webkit">WebKit</MenuItem>
+              <MenuItem value="yandex">Yandex Browser (bundled)</MenuItem>
               <MenuItem value="custom">Custom (path to executable)</MenuItem>
             </Select>
           </FormControl>
