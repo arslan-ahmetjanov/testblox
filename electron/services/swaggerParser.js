@@ -1,13 +1,20 @@
 const axios = require('axios');
 const filestore = require('../store/filestore');
+const { assertHttpsWebUrl } = require('../utils/requireHttpsUrl');
 
 /**
  * Fetch Swagger/OpenAPI JSON from URL or use provided object.
  */
 async function fetchSwaggerSpec(urlOrSpec) {
-  if (typeof urlOrSpec === 'string' && (urlOrSpec.startsWith('http://') || urlOrSpec.startsWith('https://'))) {
-    const res = await axios.get(urlOrSpec, { timeout: 15000 });
-    return res.data;
+  if (typeof urlOrSpec === 'string') {
+    const trimmed = urlOrSpec.trim();
+    if (trimmed.startsWith('https://')) {
+      const res = await axios.get(trimmed, { timeout: 15000 });
+      return res.data;
+    }
+    if (trimmed.startsWith('http://')) {
+      throw new Error('Swagger URL must use https://');
+    }
   }
   if (typeof urlOrSpec === 'object' && urlOrSpec !== null) return urlOrSpec;
   throw new Error('Invalid Swagger source: URL or JSON object required');
@@ -53,9 +60,14 @@ function parsePaths(spec) {
 async function importSwagger(workspacePath, urlOrSpec) {
   const spec = await fetchSwaggerSpec(urlOrSpec);
   const baseUrl = spec.servers?.[0]?.url || (spec.host ? `${spec.schemes?.[0] || 'https'}://${spec.host}${(spec.basePath || '')}` : '');
+  const normalizedBase = baseUrl.replace(/\/$/, '');
+  if (!normalizedBase) {
+    throw new Error('OpenAPI spec has no server URL; add an https:// server');
+  }
+  assertHttpsWebUrl(normalizedBase, { allowEmpty: false, fieldName: 'API base URL from OpenAPI servers' });
   const apiBase = filestore.createBase(workspacePath, {
     title: spec.info?.title || 'Imported API',
-    baseUrl: baseUrl.replace(/\/$/, ''),
+    baseUrl: normalizedBase,
   });
   const parsed = parsePaths(spec);
   const created = [];

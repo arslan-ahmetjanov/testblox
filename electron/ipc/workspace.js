@@ -1,16 +1,6 @@
-const path = require('path');
-const fs = require('fs');
 const { ipcMain } = require('electron');
 const filestore = require('../store/filestore');
-
-// #region agent log
-const DEBUG_LOG = path.join(__dirname, '..', '..', 'debug-b48e74.log');
-function agentLog(obj) {
-  try {
-    fs.appendFileSync(DEBUG_LOG, JSON.stringify(obj) + '\n', 'utf8');
-  } catch (_) {}
-}
-// #endregion
+const { assertHttpsWebUrl } = require('../utils/requireHttpsUrl');
 
 let currentWorkspacePath = null;
 
@@ -83,14 +73,36 @@ function registerWorkspaceIpc() {
 
   ipcMain.handle('apiBases:list', withWorkspace((root) => filestore.listBases(root)));
   ipcMain.handle('apiBases:get', withWorkspace((root, baseId) => filestore.readBase(root, baseId)));
-  ipcMain.handle('apiBases:create', withWorkspace((root, data) => filestore.createBase(root, data)));
-  ipcMain.handle('apiBases:update', withWorkspace((root, baseId, data) => filestore.updateBase(root, baseId, data)));
+  ipcMain.handle('apiBases:create', withWorkspace((root, data) => {
+    const baseUrl = data && data.baseUrl != null ? String(data.baseUrl).trim() : '';
+    if (!baseUrl) throw new Error('API base URL is required (https://...)');
+    assertHttpsWebUrl(baseUrl, { allowEmpty: false, fieldName: 'API base URL' });
+    return filestore.createBase(root, data);
+  }));
+  ipcMain.handle('apiBases:update', withWorkspace((root, baseId, data) => {
+    if (data && data.baseUrl !== undefined) {
+      const baseUrl = String(data.baseUrl || '').trim();
+      if (!baseUrl) throw new Error('API base URL is required (https://...)');
+      assertHttpsWebUrl(baseUrl, { allowEmpty: false, fieldName: 'API base URL' });
+    }
+    return filestore.updateBase(root, baseId, data);
+  }));
   ipcMain.handle('apiBases:delete', withWorkspace((root, baseId) => filestore.deleteBase(root, baseId)));
 
   ipcMain.handle('endpoints:list', withWorkspace((root, baseId) => filestore.listEndpoints(root, baseId ?? null)));
   ipcMain.handle('endpoints:get', withWorkspace((root, endpointId) => filestore.readEndpoint(root, endpointId)));
-  ipcMain.handle('endpoints:create', withWorkspace((root, data) => filestore.createEndpoint(root, data)));
-  ipcMain.handle('endpoints:update', withWorkspace((root, endpointId, data) => filestore.updateEndpoint(root, endpointId, data)));
+  ipcMain.handle('endpoints:create', withWorkspace((root, data) => {
+    if (data && data.baseUrl != null && String(data.baseUrl).trim() !== '') {
+      assertHttpsWebUrl(data.baseUrl, { allowEmpty: false, fieldName: 'Endpoint base URL' });
+    }
+    return filestore.createEndpoint(root, data);
+  }));
+  ipcMain.handle('endpoints:update', withWorkspace((root, endpointId, data) => {
+    if (data && data.baseUrl !== undefined && String(data.baseUrl || '').trim() !== '') {
+      assertHttpsWebUrl(data.baseUrl, { allowEmpty: false, fieldName: 'Endpoint base URL' });
+    }
+    return filestore.updateEndpoint(root, endpointId, data);
+  }));
   ipcMain.handle('endpoints:delete', withWorkspace((root, endpointId) => filestore.deleteEndpoint(root, endpointId)));
   ipcMain.handle('endpoints:importSwagger', withWorkspace(async (root, urlOrSpec) => {
     const swaggerParser = require('../services/swaggerParser');
@@ -98,15 +110,21 @@ function registerWorkspaceIpc() {
   }));
 
   ipcMain.handle('pages:list', withWorkspace((root) => filestore.listPages(root)));
-  ipcMain.handle('pages:get', withWorkspace((root, pageId) => {
-    const result = filestore.readPage(root, pageId);
-    // #region agent log
-    agentLog({ sessionId: 'b48e74', location: 'workspace.js:pages:get', message: 'readPage result', data: { pageId, hasResult: !!result, rootLen: (root || '').length }, timestamp: Date.now(), hypothesisId: 'H2' });
-    // #endregion
-    return result;
+  ipcMain.handle('pages:get', withWorkspace((root, pageId) => filestore.readPage(root, pageId)));
+  ipcMain.handle('pages:create', withWorkspace((root, data) => {
+    const url = data && data.url != null ? String(data.url).trim() : '';
+    if (!url) throw new Error('Page URL is required (https://...)');
+    assertHttpsWebUrl(url, { allowEmpty: false, fieldName: 'Page URL' });
+    return filestore.createPage(root, data);
   }));
-  ipcMain.handle('pages:create', withWorkspace((root, data) => filestore.createPage(root, data)));
-  ipcMain.handle('pages:update', withWorkspace((root, pageId, data) => filestore.updatePage(root, pageId, data)));
+  ipcMain.handle('pages:update', withWorkspace((root, pageId, data) => {
+    if (data && data.url !== undefined) {
+      const url = String(data.url || '').trim();
+      if (!url) throw new Error('Page URL is required (https://...)');
+      assertHttpsWebUrl(url, { allowEmpty: false, fieldName: 'Page URL' });
+    }
+    return filestore.updatePage(root, pageId, data);
+  }));
   ipcMain.handle('pages:delete', withWorkspace((root, pageId) => filestore.deletePage(root, pageId)));
 
   ipcMain.handle('tests:list', withWorkspace((root, pageId) => filestore.listTests(root, pageId || null)));

@@ -1,8 +1,11 @@
 const path = require('path');
+const { app } = require('electron');
 const playwright = require('playwright');
 const filestore = require('../store/filestore');
 const reportsStore = require('../store/reports');
 const browserConfig = require('../store/browserConfig');
+const getBundledYandexExecutablePath = require('../utils/bundledYandexBrowser');
+const { assertHttpsRequestUrl, assertHttpsOrAboutBlank } = require('../utils/requireHttpsUrl');
 
 function resolveVariableValue(v) {
   const pattern = v.valuePattern && String(v.valuePattern).trim();
@@ -179,13 +182,13 @@ async function runTest(workspacePath, testId, options = {}) {
       else if (config.browser === 'webkit') engine = playwright.webkit;
       else if (config.browser === 'custom' && config.executablePath) {
         launchOpts.executablePath = config.executablePath;
+      } else if (config.browser === 'chromium' && !launchOpts.executablePath && app.isPackaged) {
+        const bundled = getBundledYandexExecutablePath();
+        if (bundled) launchOpts.executablePath = bundled;
       }
       browser = await engine.launch(launchOpts);
       const viewportSize = { width: viewport.width || 1920, height: viewport.height || 1080 };
       const context = await browser.newContext({ viewport: viewportSize });
-      // #region agent log
-      fetch('http://127.0.0.1:7724/ingest/0e4c3e4e-e2e9-4ac4-b6dd-0eaa7269910a',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'eea4b2'},body:JSON.stringify({sessionId:'eea4b2',location:'playwrightRunner.js:148',message:'context API check',data:{hasSetViewportSize:typeof context.setViewportSize,ctor:context.constructor?.name},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
       requestContext = context.request;
       pwPage = await context.newPage();
       await pwPage.setViewportSize(viewportSize);
@@ -208,6 +211,7 @@ async function runTest(workspacePath, testId, options = {}) {
     let currentPageId = page?.id || null;
     if (hasUiSteps && pwPage && page) {
       onProgress(0, steps.length + 1, 'Opening page...');
+      assertHttpsOrAboutBlank(page.url, 'Page URL');
       await pwPage.goto(page.url || 'about:blank', { timeout: 30000 });
       reportSteps.push({ value: `Open ${page.url}`, status: 'passed', error: null, screenshotPath: await captureScreenshot(0) });
     }
@@ -256,6 +260,7 @@ async function runTest(workspacePath, testId, options = {}) {
               ? '?' + new URLSearchParams(query).toString()
               : '';
             const url = (baseUrl + path).replace(/([^:]\/)\/+/g, '$1') + queryStr;
+            assertHttpsRequestUrl(url, 'API request URL');
 
             stepRequest = {
               method,
@@ -361,6 +366,7 @@ async function runTest(workspacePath, testId, options = {}) {
         break;
       }
       if (stepPage.id !== currentPageId) {
+        assertHttpsOrAboutBlank(stepPage.url, 'Page URL');
         await pwPage.goto(stepPage.url || 'about:blank', { timeout: 30000 });
         currentPageId = stepPage.id;
       }

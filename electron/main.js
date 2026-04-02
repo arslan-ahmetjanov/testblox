@@ -3,12 +3,6 @@ const fs = require('fs');
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const isDev = require('electron-is-dev');
 
-if (app.isPackaged) {
-  const browsersPath = path.join(process.resourcesPath, 'playwright-browsers');
-  if (fs.existsSync(browsersPath)) {
-    process.env.PLAYWRIGHT_BROWSERS_PATH = browsersPath;
-  }
-}
 const filestore = require('./store/filestore');
 const lastOpenedWorkspaces = require('./store/lastOpenedWorkspaces');
 const { registerWorkspaceIpc, setCurrentPath } = require('./ipc/workspace');

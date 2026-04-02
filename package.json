@@ -1,6 +1,6 @@
 {
   "name": "testblox",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "TestBlox - no-code test automation with Git integration",
   "main": "electron/main.js",
   "private": true,
@@ -9,14 +9,15 @@
     "start": "electron .",
     "dev": "electron .",
     "build:frontend": "cd frontend && npm ci && npm run build && node -e \"require('fs').cpSync('dist', '../renderer', {recursive: true, force: true})\"",
-    "prepare-playwright-bundled": "node scripts/prepare-playwright-bundled.js",
-    "build": "npm run build:frontend && npm run prepare-playwright-bundled && electron-builder --win && node scripts/copy-release-exe.js",
-    "build:dir": "npm run build:frontend && npm run prepare-playwright-bundled && electron-builder --win --dir",
+    "prepare-bundled-browser": "node scripts/prepare-bundled-browser.js",
+    "build": "npm run build:frontend && npm run prepare-bundled-browser && electron-builder --win && node scripts/copy-release-exe.js",
+    "build:dir": "npm run build:frontend && npm run prepare-bundled-browser && electron-builder --win --dir",
     "pack": "electron-builder --win --dir"
   },
   "dependencies": {
     "archiver": "^7.0.1",
-    "axios": "^1.9.0",
+    "axios": "1.13.6",
+    "dotenv": "^17.4.0",
     "electron-is-dev": "^2.0.0",
     "extract-zip": "^2.0.1",
     "git-url-parse": "^14.1.0",
@@ -41,8 +42,8 @@
     ],
     "extraResources": [
       {
-        "from": "dist-playwright-browsers",
-        "to": "playwright-browsers"
+        "from": "dist-bundled-browser",
+        "to": "bundled-browser"
       }
     ],
     "win": {

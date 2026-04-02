@@ -1,5 +1,6 @@
 const llmConfig = require('../store/llmConfig');
 const filestore = require('../store/filestore');
+const { assertHttpsRequestUrl } = require('../utils/requireHttpsUrl');
 
 /**
  * Call OpenRouter (or compatible) chat API with streaming, accumulate content, return full text.
@@ -148,6 +149,7 @@ async function generateTestsWithAI(userDataPath, workspacePath, pageId, customPr
   const apiUrl = config.apiBaseUrl.endsWith('/chat/completions')
     ? config.apiBaseUrl
     : `${config.apiBaseUrl.replace(/\/$/, '')}/chat/completions`;
+  assertHttpsRequestUrl(apiUrl, 'LLM API URL');
 
   let content = await streamChatCompletion(
     apiUrl,
@@ -197,6 +199,7 @@ async function generateFromSelection(userDataPath, workspacePath, options = {}) 
   const apiUrl = config.apiBaseUrl.endsWith('/chat/completions')
     ? config.apiBaseUrl
     : `${config.apiBaseUrl.replace(/\/$/, '')}/chat/completions`;
+  assertHttpsRequestUrl(apiUrl, 'LLM API URL');
 
   let content = await streamChatCompletion(
     apiUrl,
