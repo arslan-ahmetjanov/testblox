@@ -9,6 +9,28 @@ import WorkspaceView from './screens/WorkspaceView';
 
 const THEME_STORAGE_KEY = 'testblox-theme';
 
+const sharedThemeComponents = {
+  MuiButton: {
+    styleOverrides: {
+      root: { textTransform: 'none' },
+    },
+  },
+  MuiPaper: {
+    styleOverrides: {
+      root: {
+        backgroundImage: 'none',
+      },
+    },
+  },
+  MuiListItemButton: {
+    styleOverrides: {
+      root: {
+        borderRadius: 8,
+      },
+    },
+  },
+};
+
 const lightTheme = createTheme({
   palette: {
     mode: 'light',
@@ -24,13 +46,10 @@ const lightTheme = createTheme({
   typography: {
     fontFamily: '"Golos Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
-  components: {
-    MuiButton: {
-      styleOverrides: {
-        root: { textTransform: 'none' },
-      },
-    },
+  shape: {
+    borderRadius: 8,
   },
+  components: sharedThemeComponents,
 });
 
 const darkTheme = createTheme({
@@ -48,13 +67,10 @@ const darkTheme = createTheme({
   typography: {
     fontFamily: '"Golos Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
-  components: {
-    MuiButton: {
-      styleOverrides: {
-        root: { textTransform: 'none' },
-      },
-    },
+  shape: {
+    borderRadius: 8,
   },
+  components: sharedThemeComponents,
 });
 
 function getInitialThemeMode() {

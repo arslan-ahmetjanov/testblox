@@ -24,9 +24,10 @@ import {
   ListItemText,
   ListItemSecondaryAction,
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ScreenHeader from '../components/ScreenHeader';
+import SectionLabel from '../components/SectionLabel';
 
 export default function TestsScreen({ tests: initialTests, pages: initialPages, onBack, onRefresh, onOpenTest }) {
   const [tests, setTests] = useState(initialTests || []);
@@ -154,12 +155,17 @@ export default function TestsScreen({ tests: initialTests, pages: initialPages, 
 
   return (
     <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <Button startIcon={<ArrowBackIcon />} onClick={onBack} sx={{ color: 'primary.main' }}>Back</Button>
-        <Typography variant="h6" sx={{ color: 'text.primary', flex: 1 }}>Tests</Typography>
-        <Button size="small" startIcon={<ContentCopyIcon />} onClick={handleFindDuplicates} disabled={!window.electronAPI?.findDuplicateTests} sx={{ color: 'text.secondary' }}>Find duplicates</Button>
-        <Button size="small" startIcon={<AddIcon />} onClick={() => setAddOpen(true)} sx={{ color: 'primary.main' }}>Add test</Button>
-      </Box>
+      <ScreenHeader
+        title="Tests"
+        onBack={onBack}
+        actions={
+          <>
+            <Button size="small" startIcon={<ContentCopyIcon />} onClick={handleFindDuplicates} disabled={!window.electronAPI?.findDuplicateTests} sx={{ color: 'text.secondary' }}>Find duplicates</Button>
+            <Button size="small" startIcon={<AddIcon />} onClick={() => setAddOpen(true)} sx={{ color: 'primary.main' }}>Add test</Button>
+          </>
+        }
+      />
+      <SectionLabel sx={{ mb: 0.5 }}>Filters</SectionLabel>
       <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
         <FormControl size="small" sx={{ minWidth: 180 }}>
           <InputLabel id="filter-page-label" sx={{ color: 'text.secondary' }}>Filter by page</InputLabel>
@@ -193,6 +199,7 @@ export default function TestsScreen({ tests: initialTests, pages: initialPages, 
         </FormControl>
         {loadingEndpointFilter && <Typography variant="body2" sx={{ color: 'text.secondary', alignSelf: 'center' }}>Loading…</Typography>}
       </Box>
+      <SectionLabel sx={{ mt: 1, mb: 0.5 }}>Test list</SectionLabel>
       <Paper sx={{ flex: 1, minHeight: 200, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
         <Table size="small" stickyHeader>
           <TableHead>

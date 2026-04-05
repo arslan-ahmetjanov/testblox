@@ -1,15 +1,20 @@
 import { Box, Button, Typography, List, ListItem, ListItemButton, ListItemText } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ScreenHeader from '../components/ScreenHeader';
+import SectionLabel from '../components/SectionLabel';
 
 export default function PagesListScreen({ pages, onAddPage, onOpenPage }) {
   return (
     <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <Typography variant="h6" sx={{ color: 'text.primary', flex: 1 }}>Pages</Typography>
-        <Button size="small" startIcon={<AddIcon />} onClick={onAddPage} sx={{ color: 'primary.main' }}>
-          Add
-        </Button>
-      </Box>
+      <ScreenHeader
+        title="Pages"
+        actions={
+          <Button size="small" startIcon={<AddIcon />} onClick={onAddPage} sx={{ color: 'primary.main' }}>
+            Add
+          </Button>
+        }
+      />
+      <SectionLabel sx={{ mb: 0.5 }}>All pages</SectionLabel>
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
         Pages are URLs you want to test. Select a page to open its elements and tests.
       </Typography>

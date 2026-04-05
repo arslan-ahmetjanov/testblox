@@ -1,51 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Button,
-  Chip,
   Typography,
   Paper,
   TextField,
-  IconButton,
   List,
   ListItem,
   ListItemText,
   Select,
   MenuItem,
-  FormControl,
-  InputLabel,
   LinearProgress,
+  Alert,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
-import Accordion from '@mui/material/Accordion';
-import AccordionSummary from '@mui/material/AccordionSummary';
-import AccordionDetails from '@mui/material/AccordionDetails';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-
-const BODY_PREVIEW_LEN = 100;
-const AUTH_STEP_OPTIONS = [{ value: '', label: 'Use endpoint default' }, { value: 'bearer', label: 'Bearer Token' }, { value: 'basic', label: 'Basic Auth' }];
-
-function queryRows(step) {
-  const q = step.query && typeof step.query === 'object' ? step.query : {};
-  const arr = Object.entries(q).map(([k, v]) => ({ key: k, value: v != null ? String(v) : '' }));
-  return arr.length ? arr : [{ key: '', value: '' }];
-}
-function headerRows(step) {
-  const h = step.headers && typeof step.headers === 'object' ? step.headers : {};
-  const arr = Object.entries(h).map(([k, v]) => ({ key: k, value: v != null ? String(v) : '' }));
-  return arr.length ? arr : [{ key: '', value: '' }];
-}
+import SectionLabel from '../components/SectionLabel';
+import TestStepEditorCards from '../components/TestStepEditorCards';
+import { isStepApi } from '../utils/testSteps';
 
 export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun, onViewReport }) {
   const [test, setTest] = useState(null);
@@ -66,10 +44,28 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
   const [bodyModalOpen, setBodyModalOpen] = useState(false);
   const [bodyModalStepIndex, setBodyModalStepIndex] = useState(null);
   const [bodyModalValue, setBodyModalValue] = useState('');
+  const [savedStepsSignature, setSavedStepsSignature] = useState(null);
 
   useEffect(() => {
     if (!testId || !window.electronAPI) return;
-    window.electronAPI.getTest(testId).then(setTest).catch(() => setTest(null));
+    let cancelled = false;
+    window.electronAPI
+      .getTest(testId)
+      .then((t) => {
+        if (cancelled) return;
+        setTest(t);
+        if (t) setSavedStepsSignature(JSON.stringify(t.steps || []));
+        else setSavedStepsSignature(null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTest(null);
+          setSavedStepsSignature(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [testId]);
 
   useEffect(() => {
@@ -109,6 +105,11 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
   }, [runInProgress]);
 
   const steps = test?.steps || [];
+
+  const stepsDirty = useMemo(() => {
+    if (savedStepsSignature == null || !test) return false;
+    return JSON.stringify(test.steps || []) !== savedStepsSignature;
+  }, [test, savedStepsSignature]);
   const elements = page?.webElements || [];
   const elementsWithPage =
     (allPages || []).length > 0
@@ -116,14 +117,6 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
           (p.webElements || []).map((el) => ({ ...el, pageId: p.id, pageTitle: p.title || p.url || p.id }))
         )
       : (page ? (page.webElements || []).map((el) => ({ ...el, pageId: page.id, pageTitle: page.title || page.url || page.id })) : []);
-  const elementOptionValue = (pageId, webElementId) => (pageId && webElementId ? `${pageId}|${webElementId}` : webElementId || '');
-  const parseElementValue = (v) => {
-    if (!v || typeof v !== 'string') return { pageId: test?.pageId, webElementId: '' };
-    const idx = v.indexOf('|');
-    if (idx > 0) return { pageId: v.slice(0, idx), webElementId: v.slice(idx + 1) };
-    return { pageId: test?.pageId, webElementId: v };
-  };
-
   const handleTitleChange = (title) => {
     setTest((t) => (t ? { ...t, title } : null));
   };
@@ -142,12 +135,6 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
   };
 
   const isApiTest = test?.type === 'api';
-
-  /** Step is API if type is 'api' or legacy request/assertStatus/assertBody */
-  const isStepApi = (step) =>
-    step.type === 'api' || ['request', 'assertStatus', 'assertBody'].includes(step.type);
-  const getStepApiAction = (step) =>
-    step.type === 'api' ? (step.actionId || 'request') : step.type;
 
   const handleAddUiStep = () => {
     const defaultPageId = test?.pageId || allPages[0]?.id;
@@ -183,8 +170,20 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
       const s = [...(t.steps || [])];
       if (!s[index]) return t;
       if (field === 'element') {
-        const { pageId, webElementId } = parseElementValue(value);
-        s[index] = { ...s[index], pageId, webElementId };
+        const v = value;
+        if (!v || typeof v !== 'string') {
+          s[index] = { ...s[index], pageId: t.pageId, webElementId: '' };
+        } else {
+          const idx = v.indexOf('|');
+          if (idx > 0) s[index] = { ...s[index], pageId: v.slice(0, idx), webElementId: v.slice(idx + 1) };
+          else s[index] = { ...s[index], pageId: t.pageId, webElementId: v };
+        }
+      } else if (field === 'pageId') {
+        const newPageId = value;
+        let next = { ...s[index], pageId: newPageId };
+        const stillValid = elementsWithPage.some((e) => e.pageId === newPageId && e.id === next.webElementId);
+        if (!stillValid) next = { ...next, webElementId: '' };
+        s[index] = next;
       } else {
         s[index] = { ...s[index], [field]: value };
       }
@@ -232,6 +231,7 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
         return { ...s, type: 'ui', pageId: s.pageId || test.pageId };
       });
       await window.electronAPI.updateTest(testId, { steps: stepsToSave });
+      setSavedStepsSignature(JSON.stringify(stepsToSave));
       onRefresh?.();
     } catch (e) {
       console.error(e);
@@ -374,9 +374,14 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
       </Dialog>
 
       {!isApiTest && <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>Page: {page?.title || test.pageId}</Typography>}
+      {stepsDirty && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          You have unsaved step changes. Click Save to persist them to the workspace.
+        </Alert>
+      )}
       <Paper sx={{ p: 2, mb: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-          <Typography variant="overline" sx={{ color: 'primary.main' }}>Steps</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+          <SectionLabel sx={{ mb: 0 }}>Steps</SectionLabel>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button size="small" startIcon={<AddIcon />} onClick={handleAddUiStep} sx={{ color: 'primary.main' }}>Add UI step</Button>
             <Select
@@ -405,223 +410,43 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
                 ))}
               </Select>
             )}
-            <Button size="small" variant="outlined" onClick={handleSaveSteps} disabled={saving} sx={{ color: 'primary.main' }}>Save</Button>
+            <Button size="small" variant={stepsDirty ? 'contained' : 'outlined'} color="primary" onClick={handleSaveSteps} disabled={saving}>Save steps</Button>
           </Box>
         </Box>
-        <List dense>
-          {steps.length === 0 && (
-            <ListItem>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>No steps. Add a step and save.</Typography>
-            </ListItem>
-          )}
-          {steps.map((step, index) => {
-            if (step.sharedStepId) {
-              const shared = sharedSteps.find((s) => s.id === step.sharedStepId);
-              return (
-                <ListItem key={index} sx={{ alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 24 }}>{index + 1}.</Typography>
-                  <Chip size="small" label="Shared" color="primary" />
-                  <Typography variant="body2" sx={{ color: 'text.primary' }}>{shared?.title || step.sharedStepId}</Typography>
-                  <IconButton size="small" onClick={() => handleMoveStep(index, -1)} sx={{ color: 'text.secondary' }}><ArrowUpwardIcon fontSize="small" /></IconButton>
-                  <IconButton size="small" onClick={() => handleMoveStep(index, 1)} sx={{ color: 'text.secondary' }}><ArrowDownwardIcon fontSize="small" /></IconButton>
-                  <IconButton size="small" onClick={() => handleRemoveStep(index)} sx={{ color: 'text.secondary' }}><DeleteIcon /></IconButton>
-                </ListItem>
-              );
-            }
-            if (isStepApi(step)) {
-              const apiAction = getStepApiAction(step);
-              const endpointId = step.endpointId ?? step.targetId ?? '';
-              const stepBaseId = step.baseId ?? '';
-              return (
-                <ListItem key={index} sx={{ alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
-                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 24 }}>{index + 1}.</Typography>
-                  <Chip size="small" label="API" color="primary" />
-                  {apiAction === 'request' && (
-                    <>
-                      <FormControl size="small" sx={{ minWidth: 220 }}>
-                        <InputLabel sx={{ color: 'text.secondary' }}>Target (Endpoint)</InputLabel>
-                        <Select
-                          value={endpointId}
-                          onChange={(e) => handleApiStepChange(index, 'endpointId', e.target.value)}
-                          label="Target (Endpoint)"
-                          sx={{ color: 'text.primary' }}
-                        >
-                          {endpoints.map((ep) => (
-                            <MenuItem key={ep.id} value={ep.id}>{ep.method} {ep.path}</MenuItem>
-                          ))}
-                          {endpoints.length === 0 && <MenuItem value="">— No endpoints —</MenuItem>}
-                        </Select>
-                      </FormControl>
-                      <FormControl size="small" sx={{ minWidth: 200 }}>
-                        <InputLabel sx={{ color: 'text.secondary' }}>Base</InputLabel>
-                        <Select
-                          value={stepBaseId}
-                          onChange={(e) => handleApiStepChange(index, 'baseId', e.target.value || null)}
-                          label="Base"
-                          sx={{ color: 'text.primary' }}
-                        >
-                          <MenuItem value="">— Use endpoint default —</MenuItem>
-                          {apiBases.map((b) => (
-                            <MenuItem key={b.id} value={b.id}>{b.title || b.baseUrl || b.id}</MenuItem>
-                          ))}
-                          {apiBases.length === 0 && <MenuItem value="" disabled>— No bases —</MenuItem>}
-                        </Select>
-                      </FormControl>
-                    </>
-                  )}
-                  {apiAction !== 'request' && (
-                    <Typography variant="body2" sx={{ color: 'text.secondary', alignSelf: 'center' }}>Target: previous response</Typography>
-                  )}
-                  <FormControl size="small" sx={{ minWidth: 140 }}>
-                    <InputLabel sx={{ color: 'text.secondary' }}>Action</InputLabel>
-                    <Select
-                      value={apiAction}
-                      onChange={(e) => handleApiStepChange(index, 'actionId', e.target.value)}
-                      label="Action"
-                      sx={{ color: 'text.primary' }}
-                    >
-                      <MenuItem value="request">Request</MenuItem>
-                      <MenuItem value="assertStatus">Assert status</MenuItem>
-                      <MenuItem value="assertBody">Assert body</MenuItem>
-                    </Select>
-                  </FormControl>
-                  {apiAction === 'request' && (
-                    <>
-                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 200, flex: 1, flexWrap: 'wrap' }}>
-                        <Box sx={{ flex: 1, minWidth: 120 }}>
-                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>Body (JSON)</Typography>
-                          <Box sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'text.secondary', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 48, overflow: 'hidden', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1, bgcolor: 'action.hover' }}>
-                            {(typeof step.body === 'string' ? step.body : (step.body ? JSON.stringify(step.body, null, 2) : '{}')).slice(0, BODY_PREVIEW_LEN)}
-                            {((typeof step.body === 'string' ? step.body : (step.body ? JSON.stringify(step.body) : '{}')).length > BODY_PREVIEW_LEN) ? '…' : ''}
-                          </Box>
-                        </Box>
-                        <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => { setBodyModalStepIndex(index); setBodyModalValue(typeof step.body === 'string' ? step.body : (step.body ? JSON.stringify(step.body, null, 2) : '{}')); setBodyModalOpen(true); }} sx={{ color: 'primary.main', alignSelf: 'flex-end' }}>Open in window</Button>
-                      </Box>
-                      <Accordion disableGutters sx={{ width: '100%', bgcolor: 'transparent', boxShadow: 'none', '&:before': { display: 'none' }, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                        <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: 'text.secondary' }} />} sx={{ minHeight: 40, '& .MuiAccordionSummary-content': { color: 'text.primary' } }}><Typography variant="caption">Query, Headers, Auth</Typography></AccordionSummary>
-                        <AccordionDetails sx={{ pt: 0 }}>
-                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>Query parameters</Typography>
-                          {queryRows(step).map((row, i) => (
-                            <Box key={i} sx={{ display: 'flex', gap: 0.5, mb: 0.5, alignItems: 'center' }}>
-                              <TextField size="small" placeholder="Key" value={row.key} onChange={(e) => { const v = e.target.value; const rows = queryRows(step); const next = {}; rows.forEach((r, j) => { const k = j === i ? v : r.key; const val = j === i ? row.value : r.value; if (k != null && String(k).trim() !== '') next[String(k).trim()] = val; }); handleApiStepChange(index, 'query', next); }} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
-                              <TextField size="small" placeholder="Value" value={row.value} onChange={(e) => { const v = e.target.value; const rows = queryRows(step); const next = {}; rows.forEach((r, j) => { const k = r.key; const val = j === i ? v : r.value; if (k != null && String(k).trim() !== '') next[String(k).trim()] = val; }); handleApiStepChange(index, 'query', next); }} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
-                              <IconButton size="small" onClick={() => { const rows = queryRows(step).filter((_, j) => j !== i); const next = rows.length ? rows.reduce((o, r) => ({ ...o, [r.key]: r.value }), {}) : {}; handleApiStepChange(index, 'query', next); }} sx={{ color: 'text.secondary' }}><DeleteIcon fontSize="small" /></IconButton>
-                            </Box>
-                          ))}
-                          <Button size="small" startIcon={<AddIcon />} onClick={() => handleApiStepChange(index, 'query', { ...(step.query || {}), '': '' })} sx={{ color: 'primary.main', mt: 0.5 }}>Add query param</Button>
-                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1, mb: 0.5 }}>Headers</Typography>
-                          {headerRows(step).map((row, i) => (
-                            <Box key={i} sx={{ display: 'flex', gap: 0.5, mb: 0.5, alignItems: 'center' }}>
-                              <TextField size="small" placeholder="Header" value={row.key} onChange={(e) => { const v = e.target.value; const rows = headerRows(step); const next = {}; rows.forEach((r, j) => { const k = j === i ? v : r.key; const val = j === i ? row.value : r.value; if (k != null && String(k).trim() !== '') next[String(k).trim()] = val; }); handleApiStepChange(index, 'headers', next); }} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
-                              <TextField size="small" placeholder="Value" value={row.value} onChange={(e) => { const v = e.target.value; const rows = headerRows(step); const next = {}; rows.forEach((r, j) => { const k = r.key; const val = j === i ? v : r.value; if (k != null && String(k).trim() !== '') next[String(k).trim()] = val; }); handleApiStepChange(index, 'headers', next); }} sx={{ flex: 1, minWidth: 0, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
-                              <IconButton size="small" onClick={() => { const rows = headerRows(step).filter((_, j) => j !== i); const next = rows.length ? rows.reduce((o, r) => ({ ...o, [r.key]: r.value }), {}) : {}; handleApiStepChange(index, 'headers', next); }} sx={{ color: 'text.secondary' }}><DeleteIcon fontSize="small" /></IconButton>
-                            </Box>
-                          ))}
-                          <Button size="small" startIcon={<AddIcon />} onClick={() => handleApiStepChange(index, 'headers', { ...(step.headers || {}), '': '' })} sx={{ color: 'primary.main', mt: 0.5 }}>Add header</Button>
-                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1, mb: 0.5 }}>Auth override</Typography>
-                          <FormControl size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}>
-                            <Select value={(step.auth && (step.auth.type === 'bearer' || step.auth.type === 'basic')) ? step.auth.type : ''} onChange={(e) => { const v = e.target.value; handleApiStepChange(index, 'auth', v ? (v === 'bearer' ? { type: 'bearer', token: '' } : { type: 'basic', username: '', password: '' }) : null); }} displayEmpty sx={{ color: 'text.primary' }}>
-                              {AUTH_STEP_OPTIONS.map((o) => (<MenuItem key={o.value || 'default'} value={o.value}>{o.label}</MenuItem>))}
-                            </Select>
-                          </FormControl>
-                          {step.auth?.type === 'bearer' && (
-                            <TextField size="small" fullWidth placeholder="Token (use {{var}})" type="password" value={step.auth.token ?? ''} onChange={(e) => handleApiStepChange(index, 'auth', { type: 'bearer', token: e.target.value })} sx={{ mt: 0.5, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
-                          )}
-                          {step.auth?.type === 'basic' && (
-                            <Box sx={{ mt: 0.5 }}>
-                              <TextField size="small" fullWidth placeholder="Username" value={step.auth.username ?? ''} onChange={(e) => handleApiStepChange(index, 'auth', { ...step.auth, username: e.target.value })} sx={{ mb: 0.5, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
-                              <TextField size="small" fullWidth placeholder="Password" type="password" value={step.auth.password ?? ''} onChange={(e) => handleApiStepChange(index, 'auth', { ...step.auth, password: e.target.value })} sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
-                            </Box>
-                          )}
-                        </AccordionDetails>
-                      </Accordion>
-                    </>
-                  )}
-                  {apiAction === 'assertStatus' && (
-                    <TextField
-                      size="small"
-                      label="Value (expected status)"
-                      value={step.value ?? '200'}
-                      onChange={(e) => handleApiStepChange(index, 'value', e.target.value)}
-                      sx={{ minWidth: 120, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
-                    />
-                  )}
-                  {apiAction === 'assertBody' && (
-                    <>
-                      <TextField
-                        size="small"
-                        label="JSON path"
-                        placeholder="data.id"
-                        value={step.jsonPath ?? ''}
-                        onChange={(e) => handleApiStepChange(index, 'jsonPath', e.target.value)}
-                        sx={{ minWidth: 120, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
-                      />
-                      <TextField
-                        size="small"
-                        label="Expected value"
-                        value={step.value ?? ''}
-                        onChange={(e) => handleApiStepChange(index, 'value', e.target.value)}
-                        sx={{ minWidth: 120, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
-                      />
-                    </>
-                  )}
-                  <IconButton size="small" onClick={() => handleMoveStep(index, -1)} sx={{ color: 'text.secondary' }}><ArrowUpwardIcon fontSize="small" /></IconButton>
-                  <IconButton size="small" onClick={() => handleMoveStep(index, 1)} sx={{ color: 'text.secondary' }}><ArrowDownwardIcon fontSize="small" /></IconButton>
-                  <IconButton size="small" onClick={() => handleRemoveStep(index)} sx={{ color: 'text.secondary' }}><DeleteIcon /></IconButton>
-                </ListItem>
-              );
-            }
-            const action = actions.find((a) => a.id === step.actionId);
-            const needsValue = action?.withValue;
-            return (
-              <ListItem key={index} sx={{ alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
-                <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 24 }}>{index + 1}.</Typography>
-                <Chip size="small" label="UI" color="success" />
-                <FormControl size="small" sx={{ minWidth: 260 }}>
-                  <InputLabel sx={{ color: 'text.secondary' }}>Target (Element)</InputLabel>
-                  <Select
-                    value={elementOptionValue(step.pageId || test.pageId, step.webElementId)}
-                    onChange={(e) => handleStepChange(index, 'element', e.target.value)}
-                    label="Target (Element)"
-                    sx={{ color: 'text.primary' }}
-                  >
-                    {elementsWithPage.map((el) => (
-                      <MenuItem key={`${el.pageId}-${el.id}`} value={elementOptionValue(el.pageId, el.id)}>
-                        {el.pageTitle} — {el.title || el.selector}
-                      </MenuItem>
-                    ))}
-                    {elementsWithPage.length === 0 && <MenuItem value="">— No elements —</MenuItem>}
-                  </Select>
-                </FormControl>
-                <FormControl size="small" sx={{ minWidth: 140 }}>
-                  <InputLabel sx={{ color: 'text.secondary' }}>Action</InputLabel>
-                  <Select
-                    value={step.actionId || ''}
-                    onChange={(e) => handleStepChange(index, 'actionId', e.target.value)}
-                    label="Action"
-                    sx={{ color: 'text.primary' }}
-                  >
-                    {actions.map((a) => (
-                      <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                {needsValue && (
-                  <TextField
-                    size="small"
-                    placeholder="Value (use {{var}})"
-                    value={step.value ?? ''}
-                    onChange={(e) => handleStepChange(index, 'value', e.target.value)}
-                    sx={{ minWidth: 120, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
-                  />
-                )}
-                <IconButton size="small" onClick={() => handleMoveStep(index, -1)} sx={{ color: 'text.secondary' }}><ArrowUpwardIcon fontSize="small" /></IconButton>
-                <IconButton size="small" onClick={() => handleMoveStep(index, 1)} sx={{ color: 'text.secondary' }}><ArrowDownwardIcon fontSize="small" /></IconButton>
-                <IconButton size="small" onClick={() => handleRemoveStep(index)} sx={{ color: 'text.secondary' }}><DeleteIcon /></IconButton>
-              </ListItem>
-            );
-          })}
-        </List>
+        {steps.length === 0 && (
+          <Box sx={{ py: 3, px: 1, textAlign: 'center' }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+              No steps yet. Add a UI step to interact with the page, or an API step for HTTP requests and assertions.
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={handleAddUiStep} sx={{ bgcolor: 'success.main', color: 'background.default' }}>Add UI step</Button>
+              <Button size="small" variant="outlined" onClick={() => handleAddApiStep('request')} sx={{ color: 'primary.main' }}>Add API request</Button>
+            </Box>
+          </Box>
+        )}
+        {steps.length > 0 && (
+          <TestStepEditorCards
+            variant="test"
+            steps={steps}
+            sharedCatalog={sharedSteps}
+            pages={allPages}
+            elementsWithPage={elementsWithPage}
+            defaultPageId={test.pageId || allPages[0]?.id}
+            testPageId={test.pageId}
+            endpoints={endpoints}
+            apiBases={apiBases}
+            actions={actions}
+            onStepChange={handleStepChange}
+            onApiStepChange={handleApiStepChange}
+            onRemoveStep={handleRemoveStep}
+            onMoveStep={handleMoveStep}
+            onOpenBodyModal={(index, bodyStr) => {
+              setBodyModalStepIndex(index);
+              setBodyModalValue(bodyStr);
+              setBodyModalOpen(true);
+            }}
+          />
+        )}
       </Paper>
     </Box>
   );

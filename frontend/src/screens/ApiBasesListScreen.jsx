@@ -8,14 +8,19 @@ import {
   ListItem,
   ListItemButton,
   ListItemText,
+  ListItemSecondaryAction,
+  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import ScreenHeader from '../components/ScreenHeader';
+import SectionLabel from '../components/SectionLabel';
 import CloudDownloadIcon from '@mui/icons-material/CloudDownload';
 
 export default function ApiBasesListScreen({ onBack, onRefresh, onOpenBase }) {
@@ -28,6 +33,8 @@ export default function ApiBasesListScreen({ onBack, onRefresh, onOpenBase }) {
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => {
     if (!window.electronAPI?.listApiBases) return;
@@ -71,14 +78,34 @@ export default function ApiBasesListScreen({ onBack, onRefresh, onOpenBase }) {
     }
   };
 
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget?.id || !window.electronAPI?.deleteApiBase) return;
+    setDeleting(true);
+    try {
+      await window.electronAPI.deleteApiBase(deleteTarget.id);
+      setDeleteTarget(null);
+      load();
+      onRefresh?.();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <Button startIcon={<ArrowBackIcon />} onClick={onBack} sx={{ color: 'primary.main' }}>Back</Button>
-        <Typography variant="h6" sx={{ color: 'text.primary', flex: 1 }}>API Bases</Typography>
-        <Button size="small" startIcon={<AddIcon />} onClick={() => { setAddOpen(true); setTitle(''); setBaseUrl(''); }} sx={{ color: 'primary.main' }}>Add base</Button>
-        <Button size="small" startIcon={<CloudDownloadIcon />} onClick={() => { setImportOpen(true); setImportError(null); }} sx={{ color: 'primary.main' }}>Import from Swagger</Button>
-      </Box>
+      <ScreenHeader
+        title="API Bases"
+        onBack={onBack}
+        actions={
+          <>
+            <Button size="small" startIcon={<AddIcon />} onClick={() => { setAddOpen(true); setTitle(''); setBaseUrl(''); }} sx={{ color: 'primary.main' }}>Add base</Button>
+            <Button size="small" startIcon={<CloudDownloadIcon />} onClick={() => { setImportOpen(true); setImportError(null); }} sx={{ color: 'primary.main' }}>Import from Swagger</Button>
+          </>
+        }
+      />
+      <SectionLabel sx={{ mb: 0.5 }}>Bases in workspace</SectionLabel>
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
         API bases define a base URL. Endpoints belong to a base and use its URL. Import Swagger to create a base and its endpoints.
       </Typography>
@@ -90,7 +117,23 @@ export default function ApiBasesListScreen({ onBack, onRefresh, onOpenBase }) {
             </ListItem>
           )}
           {bases.map((b) => (
-            <ListItem key={b.id} disablePadding>
+            <ListItem
+              key={b.id}
+              disablePadding
+              secondaryAction={
+                <ListItemSecondaryAction>
+                  <IconButton
+                    edge="end"
+                    aria-label="Delete API base"
+                    size="small"
+                    onClick={() => setDeleteTarget({ id: b.id, title: b.title })}
+                    sx={{ color: 'text.secondary' }}
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </ListItemSecondaryAction>
+              }
+            >
               <ListItemButton onClick={() => onOpenBase?.(b.id)}>
                 <ListItemText
                   primary={b.title}
@@ -125,6 +168,21 @@ export default function ApiBasesListScreen({ onBack, onRefresh, onOpenBase }) {
         <DialogActions>
           <Button onClick={() => setImportOpen(false)} disabled={importing} sx={{ color: 'text.secondary' }}>Cancel</Button>
           <Button onClick={handleImport} disabled={!importUrl.trim() || importing} variant="contained" sx={{ bgcolor: 'primary.main' }}>Import</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onClose={() => !deleting && setDeleteTarget(null)}>
+        <DialogTitle sx={{ color: 'text.primary' }}>Delete API base?</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ color: 'text.secondary' }}>
+            {deleteTarget?.title ? `Remove “${deleteTarget.title}” from this workspace?` : 'Remove this API base from the workspace?'} Endpoints linked to this base will no longer appear under it. API steps that reference them may need to be updated.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)} disabled={deleting} sx={{ color: 'text.secondary' }}>Cancel</Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained" disabled={deleting}>
+            {deleting ? 'Deleting…' : 'Delete'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

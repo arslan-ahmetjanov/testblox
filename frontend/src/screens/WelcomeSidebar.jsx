@@ -1,4 +1,5 @@
-import { Box, Button, Typography, Paper } from '@mui/material';
+import { Box, Button, Paper } from '@mui/material';
+import SectionLabel from '../components/SectionLabel';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
@@ -14,9 +15,7 @@ export default function WelcomeSidebar({ onOpenFolder, onCloneClick, onCreatePro
         borderColor: 'divider',
       }}
     >
-      <Typography variant="overline" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
-        Get started
-      </Typography>
+      <SectionLabel sx={{ mb: 1 }}>Get started</SectionLabel>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         <Button
           size="small"

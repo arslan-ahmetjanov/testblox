@@ -13,8 +13,9 @@ import {
   TableHead,
   TableRow,
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
+import ScreenHeader from '../components/ScreenHeader';
+import SectionLabel from '../components/SectionLabel';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 
@@ -85,12 +86,17 @@ export default function VariablesScreen({ onBack }) {
 
   return (
     <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <Button startIcon={<ArrowBackIcon />} onClick={onBack} sx={{ color: 'primary.main' }}>Back</Button>
-        <Typography variant="h6" sx={{ color: 'text.primary', flex: 1 }}>Variables</Typography>
-        <Button size="small" startIcon={<AddIcon />} onClick={handleAdd} sx={{ color: 'primary.main' }}>Add</Button>
-        <Button size="small" variant="outlined" startIcon={<SaveIcon />} onClick={handleSave} disabled={saving} sx={{ color: 'primary.main' }}>Save</Button>
-      </Box>
+      <ScreenHeader
+        title="Variables"
+        onBack={onBack}
+        actions={
+          <>
+            <Button size="small" startIcon={<AddIcon />} onClick={handleAdd} sx={{ color: 'primary.main' }}>Add</Button>
+            <Button size="small" variant="outlined" startIcon={<SaveIcon />} onClick={handleSave} disabled={saving} sx={{ color: 'primary.main' }}>Save</Button>
+          </>
+        }
+      />
+      <SectionLabel sx={{ mb: 0.5 }}>Workspace variables</SectionLabel>
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
         Use in steps as <code style={{ background: 'action.hover', padding: '2px 6px', borderRadius: 4 }}>{'{{variableName}}'}</code>. Optional pattern (regex): when set, the value is regenerated from that pattern on every test run; use Generate to preview a sample value.
       </Typography>

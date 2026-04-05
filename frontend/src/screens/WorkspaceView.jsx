@@ -19,6 +19,11 @@ import {
   FormControl,
   InputLabel,
   Select,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
@@ -55,6 +60,7 @@ import ApiBasesListScreen from './ApiBasesListScreen';
 import ApiBaseScreen from './ApiBaseScreen';
 import SharedStepsScreen from './SharedStepsScreen';
 import MainLayout from '../components/MainLayout';
+import SectionLabel from '../components/SectionLabel';
 
 export default function WorkspaceView({ workspacePath, workspace, pages, themeMode, onToggleTheme, onRefresh, onOpenFolder, onCloseWorkspace }) {
   const [view, setView] = useState('list'); // 'list' | 'page' | 'test' | 'run' | 'report' | 'variables' | 'apiBases' | 'apiBase' | 'sharedSteps'
@@ -642,6 +648,31 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
     </Paper>
   );
 
+  const clearSubSelection = () => {
+    setSelectedPageId(null);
+    setSelectedTestId(null);
+    setSelectedBaseId(null);
+  };
+
+  const navItem = (icon, label, selected, onClick) => (
+    <ListItem key={label} disablePadding sx={{ mb: 0.25 }}>
+      <ListItemButton
+        selected={selected}
+        onClick={onClick}
+        sx={{
+          borderRadius: 1,
+          py: 0.65,
+          '&.Mui-selected': {
+            bgcolor: 'action.selected',
+          },
+        }}
+      >
+        <ListItemIcon sx={{ minWidth: 36, color: 'primary.main' }}>{icon}</ListItemIcon>
+        <ListItemText primary={label} primaryTypographyProps={{ variant: 'body2', sx: { color: 'text.primary' } }} />
+      </ListItemButton>
+    </ListItem>
+  );
+
   const workspaceSidebar = (
     <Paper
       sx={{
@@ -650,47 +681,160 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
         bgcolor: 'background.paper',
         border: '1px solid',
         borderColor: 'divider',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'auto',
       }}
     >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
-            <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
-              Workspace: {workspace?.title || 'Untitled'}
-            </Typography>
-            <IconButton size="small" onClick={openWorkspaceTitleEdit} sx={{ color: 'text.secondary', p: 0.25 }} title="Edit workspace name">
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Box>
-          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <Button size="small" startIcon={<SearchIcon />} onClick={() => { setView('tests'); setSelectedTestId(null); setSelectedPageId(null); }} sx={{ color: 'secondary.main', justifyContent: 'flex-start' }}>
-              Tests
-            </Button>
-            <Button size="small" startIcon={<DataObjectIcon />} onClick={() => { setView('variables'); setSelectedPageId(null); setSelectedTestId(null); }} sx={{ color: 'secondary.main', justifyContent: 'flex-start' }}>
-              Variables
-            </Button>
-            <Button size="small" startIcon={<DescriptionIcon />} onClick={() => { setView('page'); setSelectedPageId(null); setSelectedTestId(null); }} sx={{ color: 'secondary.main', justifyContent: 'flex-start' }}>
-              Pages
-            </Button>
-            <Button size="small" startIcon={<ApiIcon />} onClick={() => { setView('apiBases'); setSelectedPageId(null); setSelectedTestId(null); setSelectedBaseId(null); }} sx={{ color: 'secondary.main', justifyContent: 'flex-start' }} title="API Bases">
-              API Bases
-            </Button>
-            <Button size="small" startIcon={<AllInclusiveIcon />} onClick={() => { setView('sharedSteps'); setSelectedPageId(null); setSelectedTestId(null); }} sx={{ color: 'secondary.main', justifyContent: 'flex-start' }}>
-              Shared Steps
-            </Button>
-            <Button size="small" startIcon={<PlayArrowIcon />} onClick={() => { setView('run'); setSelectedPageId(null); setSelectedTestId(null); }} sx={{ color: 'secondary.main', justifyContent: 'flex-start' }}>
-              Run Tests
-            </Button>
-            <Button size="small" startIcon={<AssessmentIcon />} onClick={() => { setView('report'); setSelectedPageId(null); setSelectedTestId(null); }} sx={{ color: 'secondary.main', justifyContent: 'flex-start' }}>
-              Reports
-            </Button>
-          </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+        <Typography variant="subtitle2" sx={{ color: 'text.secondary', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          Workspace: {workspace?.title || 'Untitled'}
+        </Typography>
+        <IconButton size="small" onClick={openWorkspaceTitleEdit} sx={{ color: 'text.secondary', p: 0.25 }} title="Edit workspace name">
+          <EditIcon fontSize="small" />
+        </IconButton>
+      </Box>
+      <List dense disablePadding sx={{ mt: 1 }}>
+        <SectionLabel sx={{ mt: 0, mb: 0.5, px: 0.5 }}>Authoring</SectionLabel>
+        {navItem(<SearchIcon fontSize="small" />, 'Tests', view === 'tests' || view === 'test', () => {
+          setView('tests');
+          clearSubSelection();
+        })}
+        {navItem(<DescriptionIcon fontSize="small" />, 'Pages', view === 'page', () => {
+          setView('page');
+          clearSubSelection();
+        })}
+        {navItem(<AllInclusiveIcon fontSize="small" />, 'Shared Steps', view === 'sharedSteps', () => {
+          setView('sharedSteps');
+          clearSubSelection();
+        })}
+        {navItem(<ApiIcon fontSize="small" />, 'API Bases', view === 'apiBases' || view === 'apiBase', () => {
+          setView('apiBases');
+          clearSubSelection();
+        })}
+        <SectionLabel sx={{ mt: 1.5, mb: 0.5, px: 0.5 }}>Run</SectionLabel>
+        {navItem(<PlayArrowIcon fontSize="small" />, 'Run tests', view === 'run', () => {
+          setView('run');
+          clearSubSelection();
+        })}
+        {navItem(<AssessmentIcon fontSize="small" />, 'Reports', view === 'report', () => {
+          setView('report');
+          clearSubSelection();
+        })}
+        <SectionLabel sx={{ mt: 1.5, mb: 0.5, px: 0.5 }}>Project</SectionLabel>
+        {navItem(<DataObjectIcon fontSize="small" />, 'Variables', view === 'variables', () => {
+          setView('variables');
+          clearSubSelection();
+        })}
+      </List>
     </Paper>
   );
 
   const workspaceContent = (
     <>
           {view === 'list' && (
-            <Box sx={{ p: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-              <Typography sx={{ color: 'text.secondary' }}>Select a page or test to edit, or Run tests / Reports.</Typography>
+            <Box sx={{ p: 3, flex: 1, overflow: 'auto' }}>
+              <Typography variant="h6" sx={{ color: 'text.primary', mb: 0.5 }}>
+                Workspace home
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
+                Open a section below or use the sidebar. Git actions are in the header when the folder is a repository.
+              </Typography>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+                  gap: 2,
+                  maxWidth: 960,
+                }}
+              >
+                {[
+                  {
+                    title: 'Tests',
+                    desc: 'Create and edit tests, open the step editor.',
+                    icon: <SearchIcon sx={{ color: 'primary.main' }} />,
+                    onClick: () => { setView('tests'); clearSubSelection(); },
+                  },
+                  {
+                    title: 'Pages',
+                    desc: 'URLs, captured elements, and page-level tools.',
+                    icon: <DescriptionIcon sx={{ color: 'primary.main' }} />,
+                    onClick: () => { setView('page'); clearSubSelection(); },
+                  },
+                  {
+                    title: 'Run tests',
+                    desc: 'Select tests and run with chosen workers.',
+                    icon: <PlayArrowIcon sx={{ color: 'primary.main' }} />,
+                    onClick: () => { setView('run'); clearSubSelection(); },
+                  },
+                  {
+                    title: 'Reports',
+                    desc: 'Browse recent runs and step results.',
+                    icon: <AssessmentIcon sx={{ color: 'primary.main' }} />,
+                    onClick: () => { setView('report'); clearSubSelection(); },
+                  },
+                  {
+                    title: 'Variables',
+                    desc: 'Workspace variables for {{placeholders}} in steps.',
+                    icon: <DataObjectIcon sx={{ color: 'primary.main' }} />,
+                    onClick: () => { setView('variables'); clearSubSelection(); },
+                  },
+                  {
+                    title: 'API bases',
+                    desc: 'Base URLs, endpoints, Swagger import.',
+                    icon: <ApiIcon sx={{ color: 'primary.main' }} />,
+                    onClick: () => { setView('apiBases'); clearSubSelection(); },
+                  },
+                  {
+                    title: 'Shared steps',
+                    desc: 'Reusable step groups for multiple tests.',
+                    icon: <AllInclusiveIcon sx={{ color: 'primary.main' }} />,
+                    onClick: () => { setView('sharedSteps'); clearSubSelection(); },
+                  },
+                ].map((card) => (
+                  <Paper
+                    key={card.title}
+                    elevation={0}
+                    sx={{
+                      p: 2,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'background.paper',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 1,
+                      cursor: 'pointer',
+                      transition: 'border-color 0.15s, box-shadow 0.15s',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        boxShadow: 1,
+                      },
+                    }}
+                    onClick={card.onClick}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        card.onClick();
+                      }
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {card.icon}
+                      <Typography variant="subtitle1" sx={{ color: 'text.primary', fontWeight: 600 }}>
+                        {card.title}
+                      </Typography>
+                    </Box>
+                    <Typography variant="body2" sx={{ color: 'text.secondary', flex: 1 }}>
+                      {card.desc}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600 }}>
+                      Open
+                    </Typography>
+                  </Paper>
+                ))}
+              </Box>
             </Box>
           )}
           {view === 'page' && !selectedPageId && (

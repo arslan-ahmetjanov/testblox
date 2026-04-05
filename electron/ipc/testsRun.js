@@ -87,6 +87,12 @@ function registerTestsRunIpc(mainWindow) {
       return null;
     }
   });
+
+  ipcMain.handle('reports:delete', (_, reportId) => {
+    const workspacePath = getCurrentPath();
+    if (!workspacePath) throw new Error('No workspace opened');
+    return reportsStore.deleteReport(workspacePath, reportId);
+  });
 }
 
 module.exports = registerTestsRunIpc;
