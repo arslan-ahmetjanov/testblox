@@ -13,6 +13,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   Select,
   MenuItem,
@@ -68,6 +69,8 @@ export default function ApiBaseScreen({ baseId, onBack, onRefresh }) {
     auth: { type: 'none', token: '', username: '', password: '' },
   });
   const [saving, setSaving] = useState(false);
+  const [deleteBaseOpen, setDeleteBaseOpen] = useState(false);
+  const [deleteBaseLoading, setDeleteBaseLoading] = useState(false);
 
   const loadBase = () => {
     if (!baseId || !window.electronAPI?.getApiBase) return;
@@ -170,6 +173,21 @@ export default function ApiBaseScreen({ baseId, onBack, onRefresh }) {
     }
   };
 
+  const handleDeleteBase = async () => {
+    if (!baseId || !window.electronAPI?.deleteApiBase) return;
+    setDeleteBaseLoading(true);
+    try {
+      await window.electronAPI.deleteApiBase(baseId);
+      setDeleteBaseOpen(false);
+      onRefresh?.();
+      onBack?.();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDeleteBaseLoading(false);
+    }
+  };
+
   if (!base && baseId) {
     return (
       <Box sx={{ p: 2 }}>
@@ -194,6 +212,9 @@ export default function ApiBaseScreen({ baseId, onBack, onRefresh }) {
           <>
             <Typography variant="h6" sx={{ color: 'text.primary', flex: 1 }}>{base?.title}</Typography>
             <Button size="small" startIcon={<EditIcon />} onClick={() => setEditingBase(true)} sx={{ color: 'primary.main' }}>Edit</Button>
+            <Button size="small" color="error" variant="outlined" startIcon={<DeleteIcon />} onClick={() => setDeleteBaseOpen(true)}>
+              Delete base
+            </Button>
           </>
         )}
       </Box>
@@ -298,6 +319,21 @@ export default function ApiBaseScreen({ baseId, onBack, onRefresh }) {
         <DialogActions>
           <Button onClick={() => setEditOpen(false)} disabled={saving} sx={{ color: 'text.secondary' }}>Cancel</Button>
           <Button onClick={handleSaveEndpoint} disabled={saving} variant="contained" sx={{ bgcolor: 'primary.main' }}>Save</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteBaseOpen} onClose={() => !deleteBaseLoading && setDeleteBaseOpen(false)}>
+        <DialogTitle sx={{ color: 'text.primary' }}>Delete API base?</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ color: 'text.secondary' }}>
+            Remove “{base?.title || baseId}” from this workspace? Endpoints linked to this base will no longer appear under it. API steps that reference them may need to be updated.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteBaseOpen(false)} disabled={deleteBaseLoading} sx={{ color: 'text.secondary' }}>Cancel</Button>
+          <Button onClick={handleDeleteBase} color="error" variant="contained" disabled={deleteBaseLoading}>
+            {deleteBaseLoading ? 'Deleting…' : 'Delete'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

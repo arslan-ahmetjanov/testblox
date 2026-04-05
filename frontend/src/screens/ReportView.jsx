@@ -6,14 +6,22 @@ import {
   Paper,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
   Chip,
   Collapse,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import ScreenHeader from '../components/ScreenHeader';
+import SectionLabel from '../components/SectionLabel';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import ScheduleIcon from '@mui/icons-material/Schedule';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ScreenshotGallery from '../components/ScreenshotGallery';
 
 function StepScreenshot({ reportId, filename, alt, onOpenGallery }) {
@@ -100,15 +108,23 @@ export default function ReportView({ reportId: initialReportId, onBack, onRefres
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryImages, setGalleryImages] = useState([]);
   const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (initialReportId) setReportId(initialReportId);
   }, [initialReportId]);
 
-  useEffect(() => {
-    if (!window.electronAPI) return;
-    window.electronAPI.reportsList(null).then(setReportsList).catch(() => setReportsList([]));
+  const refreshReportsList = useCallback(async () => {
+    if (!window.electronAPI) return [];
+    const list = await window.electronAPI.reportsList(null).catch(() => []);
+    setReportsList(list);
+    return list;
   }, []);
+
+  useEffect(() => {
+    refreshReportsList();
+  }, [refreshReportsList]);
 
   useEffect(() => {
     if (reportsList.length > 0 && !reportId) setReportId(reportsList[0].id);
@@ -122,6 +138,32 @@ export default function ReportView({ reportId: initialReportId, onBack, onRefres
   const handleSelectReport = (id) => {
     setReportId(id);
     window.electronAPI?.reportsGet(id).then(setReport).catch(() => setReport(null));
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!reportId || !window.electronAPI?.reportsDelete) return;
+    const idToRemove = reportId;
+    setDeleting(true);
+    try {
+      await window.electronAPI.reportsDelete(idToRemove);
+      const list = await window.electronAPI.reportsList(null).catch(() => []);
+      setReportsList(list);
+      const nextId = list[0]?.id ?? null;
+      if (nextId) {
+        setReportId(nextId);
+        const nextReport = await window.electronAPI.reportsGet(nextId).catch(() => null);
+        setReport(nextReport);
+      } else {
+        setReportId(null);
+        setReport(null);
+      }
+      setDeleteDialogOpen(false);
+      onRefresh?.();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const openScreenshotGallery = useCallback(async (stepIndex) => {
@@ -147,23 +189,22 @@ export default function ReportView({ reportId: initialReportId, onBack, onRefres
 
   return (
     <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <Button startIcon={<ArrowBackIcon />} onClick={onBack} sx={{ color: 'primary.main' }}>Back</Button>
-        <Typography variant="h6" sx={{ color: 'text.primary', flex: 1 }}>Reports</Typography>
-      </Box>
+      <ScreenHeader title="Reports" onBack={onBack} />
       <Box sx={{ display: 'flex', gap: 2, flex: 1, minHeight: 0 }}>
         <Paper sx={{ width: 280, p: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="overline" sx={{ color: 'primary.main' }}>Recent</Typography>
+          <SectionLabel sx={{ mb: 0.5 }}>Recent</SectionLabel>
           <List dense>
             {reportsList.length === 0 && <ListItem><ListItemText primary="No reports" sx={{ color: 'text.secondary' }} /></ListItem>}
             {reportsList.map((r) => (
-              <ListItem key={r.id} button selected={r.id === reportId} onClick={() => handleSelectReport(r.id)}>
-                <ListItemText
-                  primary={r.testTitle || r.testId}
-                  secondary={r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}
-                  primaryTypographyProps={{ sx: { color: 'text.primary', fontSize: '0.9rem' } }}
-                  secondaryTypographyProps={{ sx: { color: 'text.secondary', fontSize: '0.75rem' } }}
-                />
+              <ListItem key={r.id} disablePadding>
+                <ListItemButton selected={r.id === reportId} onClick={() => handleSelectReport(r.id)} dense>
+                  <ListItemText
+                    primary={r.testTitle || r.testId}
+                    secondary={r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}
+                    primaryTypographyProps={{ sx: { color: 'text.primary', fontSize: '0.9rem' } }}
+                    secondaryTypographyProps={{ sx: { color: 'text.secondary', fontSize: '0.75rem' } }}
+                  />
+                </ListItemButton>
               </ListItem>
             ))}
           </List>
@@ -172,7 +213,7 @@ export default function ReportView({ reportId: initialReportId, onBack, onRefres
           {!report && <Typography sx={{ color: 'text.secondary' }}>Select a report</Typography>}
           {report && (
             <>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap', width: '100%' }}>
                 <Typography variant="h6" sx={{ color: 'text.primary' }}>{report.testTitle || report.testId}</Typography>
                 <Chip
                   size="small"
@@ -186,31 +227,105 @@ export default function ReportView({ reportId: initialReportId, onBack, onRefres
                 {report.executionTime != null && (
                   <Chip size="small" icon={<ScheduleIcon />} label={`${report.executionTime}ms`} sx={{ color: 'text.secondary' }} />
                 )}
+                <Button
+                  size="small"
+                  color="error"
+                  variant="outlined"
+                  startIcon={<DeleteOutlineIcon />}
+                  onClick={() => setDeleteDialogOpen(true)}
+                  sx={{ ml: 'auto' }}
+                >
+                  Delete report
+                </Button>
               </Box>
-              <Typography variant="overline" sx={{ color: 'primary.main' }}>Steps</Typography>
-              <List dense>
-                {(report.steps || []).map((step, i) => (
-                  <ListItem key={i} sx={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <ListItemText
-                        primary={step.value != null ? step.value : `Step ${i + 1}`}
-                        secondary={step.error || (stepStatus(step) === 'passed' ? 'OK' : stepStatus(step))}
-                        primaryTypographyProps={{ sx: { color: 'text.primary' } }}
-                        secondaryTypographyProps={{ sx: { color: step.error ? 'error.main' : 'text.secondary' } }}
-                      />
-                      {(step.request || step.response) && <ApiStepRequestResponse step={step} />}
+              <SectionLabel sx={{ mt: 1, mb: 1 }}>Step timeline</SectionLabel>
+              <Box sx={{ pl: 0.5 }}>
+                {(report.steps || []).map((step, i) => {
+                  const ok = stepStatus(step) === 'passed';
+                  const isLast = i === (report.steps || []).length - 1;
+                  return (
+                    <Box
+                      key={i}
+                      sx={{
+                        display: 'flex',
+                        gap: 1.5,
+                        pb: isLast ? 0 : 2,
+                        position: 'relative',
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          width: 28,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            bgcolor: ok ? 'success.dark' : 'error.dark',
+                            color: 'background.paper',
+                          }}
+                        >
+                          {ok ? <CheckCircleIcon sx={{ fontSize: 18 }} /> : <ErrorIcon sx={{ fontSize: 18 }} />}
+                        </Box>
+                        {!isLast && (
+                          <Box
+                            sx={{
+                              flex: 1,
+                              width: 2,
+                              minHeight: 16,
+                              mt: 0.5,
+                              bgcolor: 'divider',
+                            }}
+                          />
+                        )}
+                      </Box>
+                      <Paper
+                        variant="outlined"
+                        sx={{
+                          flex: 1,
+                          minWidth: 0,
+                          p: 1.5,
+                          borderColor: 'divider',
+                          bgcolor: 'action.hover',
+                        }}
+                      >
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                          Step {i + 1}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.primary', mt: 0.25 }}>
+                          {step.value != null ? step.value : `Step ${i + 1}`}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{ color: step.error ? 'error.main' : 'text.secondary', display: 'block', mt: 0.5 }}
+                        >
+                          {step.error || (ok ? 'Passed' : 'Failed')}
+                        </Typography>
+                        {(step.request || step.response) && <ApiStepRequestResponse step={step} />}
+                        {step.screenshotPath && reportId && (
+                          <Box sx={{ mt: 1 }}>
+                            <StepScreenshot
+                              reportId={reportId}
+                              filename={step.screenshotPath}
+                              alt={`Step ${i + 1}`}
+                              onOpenGallery={() => openScreenshotGallery(i)}
+                            />
+                          </Box>
+                        )}
+                      </Paper>
                     </Box>
-                    {step.screenshotPath && reportId && (
-                      <StepScreenshot
-                        reportId={reportId}
-                        filename={step.screenshotPath}
-                        alt={`Step ${i + 1}`}
-                        onOpenGallery={() => openScreenshotGallery(i)}
-                      />
-                    )}
-                  </ListItem>
-                ))}
-              </List>
+                  );
+                })}
+              </Box>
             </>
           )}
         </Paper>
@@ -222,6 +337,22 @@ export default function ReportView({ reportId: initialReportId, onBack, onRefres
           onClose={() => setGalleryOpen(false)}
         />
       )}
+      <Dialog open={deleteDialogOpen} onClose={() => !deleting && setDeleteDialogOpen(false)}>
+        <DialogTitle sx={{ color: 'text.primary' }}>Delete this report?</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ color: 'text.secondary' }}>
+            This removes the report file and any stored screenshots. This cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} disabled={deleting} sx={{ color: 'text.secondary' }}>
+            Cancel
+          </Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained" disabled={deleting}>
+            {deleting ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

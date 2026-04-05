@@ -58,4 +58,34 @@ function listReports(rootPath, testId = null) {
   return reports.slice(0, 100);
 }
 
-module.exports = { saveReport, readReport, listReports, getReportsDir, getReportDir, getScreenshotPath };
+const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+
+function deleteReport(rootPath, reportId) {
+  if (!reportId || typeof reportId !== 'string' || !UUID_RE.test(reportId)) {
+    throw new Error('Invalid report id');
+  }
+  const reportsDir = path.resolve(getReportsDir(rootPath));
+  const jsonPath = path.resolve(reportsDir, `${reportId}.json`);
+  const folderPath = path.resolve(reportsDir, reportId);
+  const relJson = path.relative(reportsDir, jsonPath);
+  const relDir = path.relative(reportsDir, folderPath);
+  if (relJson.startsWith('..') || path.isAbsolute(relJson) || relDir.startsWith('..') || path.isAbsolute(relDir)) {
+    throw new Error('Invalid report path');
+  }
+  if (fs.existsSync(jsonPath)) fs.unlinkSync(jsonPath);
+  if (fs.existsSync(folderPath)) {
+    const st = fs.statSync(folderPath);
+    if (st.isDirectory()) fs.rmSync(folderPath, { recursive: true, force: true });
+  }
+  return true;
+}
+
+module.exports = {
+  saveReport,
+  readReport,
+  listReports,
+  deleteReport,
+  getReportsDir,
+  getReportDir,
+  getScreenshotPath,
+};

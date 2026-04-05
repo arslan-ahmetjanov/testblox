@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   reportsList: (testId) => ipcRenderer.invoke('reports:list', testId),
   reportsGet: (reportId) => ipcRenderer.invoke('reports:get', reportId),
   reportsGetScreenshot: (reportId, filename) => ipcRenderer.invoke('reports:getScreenshot', reportId, filename),
+  reportsDelete: (reportId) => ipcRenderer.invoke('reports:delete', reportId),
   parsePage: (url, viewport) => ipcRenderer.invoke('parser:parsePage', url, viewport),
   onTestRunProgress: (cb) => {
     const fn = (_, e) => cb(e);

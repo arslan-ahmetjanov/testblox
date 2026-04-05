@@ -58,6 +58,43 @@ function getPaths(rootPath) {
   };
 }
 
+/** UUID-shaped ids from genId() / crypto.randomUUID() */
+const ENTITY_ID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+
+function assertValidEntityId(id) {
+  if (!id || typeof id !== 'string' || !ENTITY_ID_RE.test(id)) {
+    throw new Error('Invalid entity id');
+  }
+}
+
+/**
+ * Remove `{id}.json` under parentDir if it lies inside resolved parentDir.
+ * @returns {boolean} true if file existed and was removed
+ */
+function safeUnlinkJsonInDir(parentDir, id) {
+  assertValidEntityId(id);
+  const resolvedParent = path.resolve(parentDir);
+  const filePath = path.resolve(path.join(resolvedParent, `${id}.json`));
+  const rel = path.relative(resolvedParent, filePath);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('Invalid path');
+  }
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+    return true;
+  }
+  return false;
+}
+
+function testReferencesPage(test, pageId) {
+  if (!test || typeof test !== 'object') return false;
+  if (test.pageId === pageId) return true;
+  for (const s of test.steps || []) {
+    if (s && typeof s === 'object' && s.pageId === pageId) return true;
+  }
+  return false;
+}
+
 function initWorkspace(rootPath, title = 'My Workspace') {
   const p = getPaths(rootPath);
   ensureDir(p.base);
@@ -362,11 +399,21 @@ function updatePage(rootPath, pageId, data) {
 }
 
 function deletePage(rootPath, pageId) {
+  assertValidEntityId(pageId);
   const page = readPage(rootPath, pageId);
   if (!page) return null;
-  page.deleted = true;
-  page.updatedAt = new Date().toISOString();
-  writePage(rootPath, page);
+  const p = getPaths(rootPath);
+  if (fs.existsSync(p.testsDir)) {
+    const files = fs.readdirSync(p.testsDir).filter((f) => f.endsWith('.json'));
+    for (const f of files) {
+      const tid = f.replace(/\.json$/i, '');
+      if (!ENTITY_ID_RE.test(tid)) continue;
+      const test = readJsonSafe(path.join(p.testsDir, f));
+      if (!testReferencesPage(test, pageId)) continue;
+      safeUnlinkJsonInDir(p.testsDir, tid);
+    }
+  }
+  safeUnlinkJsonInDir(p.pagesDir, pageId);
   return page;
 }
 
@@ -439,11 +486,11 @@ function updateTest(rootPath, testId, data) {
 }
 
 function deleteTest(rootPath, testId) {
+  assertValidEntityId(testId);
   const test = readTest(rootPath, testId);
   if (!test) return null;
-  test.deleted = true;
-  test.updatedAt = new Date().toISOString();
-  writeTest(rootPath, test);
+  const p = getPaths(rootPath);
+  safeUnlinkJsonInDir(p.testsDir, testId);
   return test;
 }
 
@@ -530,11 +577,19 @@ function updateBase(rootPath, baseId, data) {
 }
 
 function deleteBase(rootPath, baseId) {
+  assertValidEntityId(baseId);
   const base = readBase(rootPath, baseId);
   if (!base) return null;
-  base.deleted = true;
-  base.updatedAt = new Date().toISOString();
-  writeBase(rootPath, base);
+  const p = getPaths(rootPath);
+  if (fs.existsSync(p.endpointsDir)) {
+    const files = fs.readdirSync(p.endpointsDir).filter((f) => f.endsWith('.json'));
+    for (const f of files) {
+      const ep = readJsonSafe(path.join(p.endpointsDir, f));
+      if (!ep || ep.baseId !== baseId || !ep.id || !ENTITY_ID_RE.test(ep.id)) continue;
+      safeUnlinkJsonInDir(p.endpointsDir, ep.id);
+    }
+  }
+  safeUnlinkJsonInDir(p.apiBasesDir, baseId);
   return base;
 }
 
@@ -606,12 +661,41 @@ function updateEndpoint(rootPath, endpointId, data) {
 }
 
 function deleteEndpoint(rootPath, endpointId) {
+  assertValidEntityId(endpointId);
   const endpoint = readEndpoint(rootPath, endpointId);
   if (!endpoint) return null;
-  endpoint.deleted = true;
-  endpoint.updatedAt = new Date().toISOString();
-  writeEndpoint(rootPath, endpoint);
+  const p = getPaths(rootPath);
+  safeUnlinkJsonInDir(p.endpointsDir, endpointId);
   return endpoint;
+}
+
+/**
+ * Remove JSON files that were soft-deleted (deleted: true). One-time cleanup for workspaces before hard-delete migration.
+ * @returns {{ pages: number, tests: number, apiBases: number, endpoints: number }}
+ */
+function pruneSoftDeletedEntities(rootPath) {
+  const p = getPaths(rootPath);
+  const counts = { pages: 0, tests: 0, apiBases: 0, endpoints: 0 };
+
+  function pruneDir(dirPath, key) {
+    if (!fs.existsSync(dirPath)) return;
+    for (const f of fs.readdirSync(dirPath).filter((x) => x.endsWith('.json'))) {
+      const id = f.slice(0, -5);
+      if (!ENTITY_ID_RE.test(id)) continue;
+      const data = readJsonSafe(path.join(dirPath, f));
+      if (data && data.deleted === true) {
+        try {
+          if (safeUnlinkJsonInDir(dirPath, id)) counts[key] += 1;
+        } catch (_) {}
+      }
+    }
+  }
+
+  pruneDir(p.pagesDir, 'pages');
+  pruneDir(p.testsDir, 'tests');
+  pruneDir(p.apiBasesDir, 'apiBases');
+  pruneDir(p.endpointsDir, 'endpoints');
+  return counts;
 }
 
 function isWorkspace(rootPath) {
@@ -662,6 +746,7 @@ module.exports = {
   updateTest,
   deleteTest,
   findDuplicateTests,
+  pruneSoftDeletedEntities,
   isWorkspace,
   genId,
 };

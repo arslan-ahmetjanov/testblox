@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '@mui/material/styles';
-import { Button, TextField, Box, Typography, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemButton } from '@mui/material';
+import { Button, TextField, Box, Typography, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemButton, Divider, Paper } from '@mui/material';
+import SectionLabel from '../components/SectionLabel';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
@@ -128,9 +129,7 @@ export default function WelcomeOverview({
         p: 2,
       }}
     >
-      <Typography variant="overline" sx={{ color: theme.palette.text.secondary, display: 'block', mb: 1 }}>
-        Quick Actions
-      </Typography>
+      <SectionLabel sx={{ mb: 1 }}>Quick actions</SectionLabel>
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <Button
           variant="contained"
@@ -188,14 +187,35 @@ export default function WelcomeOverview({
         </Button>
       </Box>
 
-      <Typography sx={{ color: theme.palette.text.secondary, mt: 3, fontSize: '0.875rem' }}>
+      <Divider sx={{ my: 3, borderColor: 'divider' }} />
+
+      <Typography sx={{ color: theme.palette.text.secondary, fontSize: '0.875rem', mb: 2 }}>
         Open an existing workspace folder, clone a Git repository, or create a new project to get started.
       </Typography>
 
-      {recentWorkspaces.length > 0 && (
+      {recentWorkspaces.length === 0 ? (
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2,
+            maxWidth: 520,
+            borderColor: 'divider',
+            bgcolor: 'action.hover',
+          }}
+        >
+          <Typography variant="subtitle2" sx={{ color: 'text.primary', mb: 0.5 }}>
+            No recent workspaces yet
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Use <strong>Open folder</strong> in the sidebar or <strong>Create new project</strong> above. Recent folders will appear here for quick access.
+          </Typography>
+        </Paper>
+      ) : (
         <>
-          <Typography variant="overline" sx={{ color: theme.palette.text.secondary, display: 'block', mt: 3, mb: 1 }}>
-            Recent workspaces
+          <Divider sx={{ my: 3, borderColor: 'divider' }} />
+          <SectionLabel sx={{ mb: 1 }}>Recent workspaces</SectionLabel>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
+            Jump back into a folder you opened before:
           </Typography>
           <List dense sx={{ maxWidth: 480 }}>
             {recentWorkspaces.map((workspacePath) => {
