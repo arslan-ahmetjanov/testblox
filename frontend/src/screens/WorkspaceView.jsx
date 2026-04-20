@@ -87,7 +87,7 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
   const [llmConfig, setLlmConfig] = useState({ global: {}, effective: {}, isValid: false });
   const [llmForm, setLlmForm] = useState({ apiKey: '', modelName: '', apiBaseUrl: '', scope: 'global' });
   const [llmSaving, setLlmSaving] = useState(false);
-  const [browserForm, setBrowserForm] = useState({ browser: 'yandex', executablePath: '' });
+  const [browserForm, setBrowserForm] = useState({ executablePath: '' });
   const [addPageOpen, setAddPageOpen] = useState(false);
   const [newPageTitle, setNewPageTitle] = useState('');
   const [newPageUrl, setNewPageUrl] = useState('');
@@ -403,7 +403,7 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
       scope: 'global',
     });
     const bc = await window.electronAPI.browserGetConfig();
-    setBrowserForm({ browser: bc.browser === 'custom' ? 'custom' : 'yandex', executablePath: bc.executablePath || '' });
+    setBrowserForm({ executablePath: bc.executablePath || '' });
   };
 
   const handleLlmSave = async () => {
@@ -413,11 +413,9 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
         scope: llmForm.scope,
         apiKey: llmForm.apiKey || '***',
         modelName: llmForm.modelName || undefined,
-        apiBaseUrl: llmForm.apiBaseUrl || undefined,
       });
       await window.electronAPI.browserSaveConfig({
-        browser: browserForm.browser,
-        executablePath: browserForm.browser === 'custom' ? (browserForm.executablePath || null) : null,
+        executablePath: browserForm.executablePath || null,
       });
       const c = await window.electronAPI.llmGetConfig();
       setLlmConfig(c);
@@ -907,35 +905,20 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
         <DialogContent>
           <Typography variant="subtitle2" sx={{ color: 'primary.main', mt: 1, mb: 1 }}>Browser for tests</Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 1 }}>
-            Yandex Browser (bundled with the app) or any Chromium-based executable you choose.
+            Set a browser executable path once; it is applied globally to all test runs.
           </Typography>
-          <FormControl fullWidth size="small" sx={{ mb: 2, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}>
-            <InputLabel id="browser-select-label" sx={{ color: 'text.secondary' }}>Browser</InputLabel>
-            <Select
-              labelId="browser-select-label"
-              label="Browser"
-              value={browserForm.browser}
-              onChange={(e) => setBrowserForm((f) => ({ ...f, browser: e.target.value }))}
-              sx={{ color: 'text.primary', '.MuiOutlinedInput-notchedOutline': { borderColor: 'divider' } }}
-            >
-              <MenuItem value="yandex">Yandex Browser (bundled)</MenuItem>
-              <MenuItem value="custom">Custom (path to executable)</MenuItem>
-            </Select>
-          </FormControl>
-          {browserForm.browser === 'custom' && (
-            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Executable path"
-                value={browserForm.executablePath}
-                onChange={(e) => setBrowserForm((f) => ({ ...f, executablePath: e.target.value }))}
-                placeholder="C:\path\to\browser.exe"
-                sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
-              />
-              <Button variant="outlined" onClick={handleBrowserBrowse} sx={{ flexShrink: 0, borderColor: 'divider', color: 'text.primary' }}>Browse</Button>
-            </Box>
-          )}
+          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Executable path"
+              value={browserForm.executablePath}
+              onChange={(e) => setBrowserForm((f) => ({ ...f, executablePath: e.target.value }))}
+              placeholder="C:\\path\\to\\browser.exe"
+              sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
+            />
+            <Button variant="outlined" onClick={handleBrowserBrowse} sx={{ flexShrink: 0, borderColor: 'divider', color: 'text.primary' }}>Browse</Button>
+          </Box>
 
           <Typography variant="subtitle2" sx={{ color: 'primary.main', mt: 2, mb: 1 }}>LLM (OpenRouter)</Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
@@ -965,8 +948,8 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
             fullWidth
             label="API Base URL"
             value={llmForm.apiBaseUrl}
-            onChange={(e) => setLlmForm((f) => ({ ...f, apiBaseUrl: e.target.value }))}
             placeholder="https://openrouter.ai/api/v1"
+            InputProps={{ readOnly: true }}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
           />
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>

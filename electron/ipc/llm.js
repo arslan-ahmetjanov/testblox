@@ -2,19 +2,13 @@ const path = require('path');
 const { ipcMain } = require('electron');
 const llmConfig = require('../store/llmConfig');
 const { getCurrentPath } = require('./workspace');
-const { assertHttpsWebUrl } = require('../utils/requireHttpsUrl');
-
-function assertLlmApiBaseUrlIfSet(url) {
-  if (url == null) return;
-  const s = String(url).trim();
-  if (s === '') return;
-  assertHttpsWebUrl(s, { allowEmpty: false, fieldName: 'LLM API base URL' });
-}
+const { readBuildConfig } = require('../config/buildConfig');
 
 function registerLlmIpc() {
   ipcMain.handle('llm:getConfig', (_, scope) => {
     const userData = require('electron').app.getPath('userData');
     const workspacePath = getCurrentPath();
+    const buildConfig = readBuildConfig();
     if (workspacePath) {
       try {
         require('dotenv').config({ path: path.join(workspacePath, '.env') });
@@ -28,30 +22,28 @@ function registerLlmIpc() {
       workspace: workspaceConfig ? { ...workspaceConfig, apiKey: workspaceConfig.apiKey ? '***' : null } : null,
       effective: { ...effective, apiKey: effective.apiKey ? '***' : null },
       isValid: llmConfig.isConfigValid(effective),
+      apiBaseUrlLocked: true,
+      buildFlavor: buildConfig.flavor,
     };
   });
 
-  ipcMain.handle('llm:saveConfig', (_, { scope, apiKey, modelName, apiBaseUrl }) => {
+  ipcMain.handle('llm:saveConfig', (_, { scope, apiKey, modelName }) => {
     const userData = require('electron').app.getPath('userData');
     if (scope === 'workspace') {
       const workspacePath = getCurrentPath();
       if (!workspacePath) throw new Error('No workspace opened');
       const current = llmConfig.getWorkspaceConfig(workspacePath) || {};
-      const nextBase = apiBaseUrl ?? current.apiBaseUrl;
-      assertLlmApiBaseUrlIfSet(nextBase);
       return llmConfig.saveWorkspaceConfig(workspacePath, {
         apiKey: apiKey === '***' ? current.apiKey : apiKey,
         modelName: modelName ?? current.modelName,
-        apiBaseUrl: nextBase,
+        apiBaseUrl: current.apiBaseUrl,
       });
     }
     const current = llmConfig.getGlobalConfig(userData);
-    const nextBaseGlobal = apiBaseUrl ?? current.apiBaseUrl;
-    assertLlmApiBaseUrlIfSet(nextBaseGlobal);
     return llmConfig.saveGlobalConfig(userData, {
       apiKey: apiKey === '***' ? current.apiKey : apiKey,
       modelName: modelName ?? current.modelName,
-      apiBaseUrl: nextBaseGlobal,
+      apiBaseUrl: current.apiBaseUrl,
     });
   });
 

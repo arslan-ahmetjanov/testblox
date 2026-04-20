@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { readBuildConfig } = require('../config/buildConfig');
 
 const LLM_FILENAME = 'llm.json';
 const WORKSPACE_LLM = '.testblox/llm.json';
@@ -37,17 +38,19 @@ function getWorkspaceConfigPath(workspaceRoot) {
 }
 
 function getGlobalConfig(userDataPath) {
+  const buildConfig = readBuildConfig();
   const filePath = getGlobalConfigPath(userDataPath);
   const raw = readJsonSafe(filePath);
-  if (!raw) return { apiKey: null, modelName: null, apiBaseUrl: null };
+  if (!raw) return { apiKey: null, modelName: null, apiBaseUrl: buildConfig.llmApiBaseUrl };
   return {
     apiKey: raw.apiKey ?? null,
     modelName: raw.modelName ?? null,
-    apiBaseUrl: raw.apiBaseUrl ?? null,
+    apiBaseUrl: buildConfig.llmApiBaseUrl,
   };
 }
 
 function getWorkspaceConfig(workspaceRoot) {
+  const buildConfig = readBuildConfig();
   const filePath = getWorkspaceConfigPath(workspaceRoot);
   if (!filePath) return null;
   const raw = readJsonSafe(filePath);
@@ -55,7 +58,7 @@ function getWorkspaceConfig(workspaceRoot) {
   return {
     apiKey: raw.apiKey ?? null,
     modelName: raw.modelName ?? null,
-    apiBaseUrl: raw.apiBaseUrl ?? null,
+    apiBaseUrl: buildConfig.llmApiBaseUrl,
   };
 }
 
@@ -64,6 +67,7 @@ function getWorkspaceConfig(workspaceRoot) {
  * Env: TESTBLOX_LLM_API_KEY, TESTBLOX_LLM_MODEL, TESTBLOX_LLM_API_BASE_URL.
  */
 function getEffectiveConfig(userDataPath, workspaceRoot) {
+  const buildConfig = readBuildConfig();
   const workspace = workspaceRoot ? getWorkspaceConfig(workspaceRoot) : null;
   const globalConfig = getGlobalConfig(userDataPath);
   let effective;
@@ -79,21 +83,23 @@ function getEffectiveConfig(userDataPath, workspaceRoot) {
   return {
     apiKey: process.env.TESTBLOX_LLM_API_KEY ?? effective.apiKey,
     modelName: process.env.TESTBLOX_LLM_MODEL ?? effective.modelName,
-    apiBaseUrl: process.env.TESTBLOX_LLM_API_BASE_URL ?? effective.apiBaseUrl,
+    apiBaseUrl: buildConfig.llmApiBaseUrl,
   };
 }
 
 function saveGlobalConfig(userDataPath, config) {
+  const buildConfig = readBuildConfig();
   const filePath = getGlobalConfigPath(userDataPath);
   writeJsonAtomic(filePath, {
     apiKey: config.apiKey ?? null,
     modelName: config.modelName ?? null,
-    apiBaseUrl: config.apiBaseUrl ?? null,
+    apiBaseUrl: buildConfig.llmApiBaseUrl,
   });
   return getGlobalConfig(userDataPath);
 }
 
 function saveWorkspaceConfig(workspaceRoot, config) {
+  const buildConfig = readBuildConfig();
   const filePath = getWorkspaceConfigPath(workspaceRoot);
   if (!filePath) return null;
   const dir = path.dirname(filePath);
@@ -101,7 +107,7 @@ function saveWorkspaceConfig(workspaceRoot, config) {
   writeJsonAtomic(filePath, {
     apiKey: config.apiKey ?? null,
     modelName: config.modelName ?? null,
-    apiBaseUrl: config.apiBaseUrl ?? null,
+    apiBaseUrl: buildConfig.llmApiBaseUrl,
   });
   return getWorkspaceConfig(workspaceRoot);
 }

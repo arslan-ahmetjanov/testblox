@@ -4,7 +4,7 @@ const path = require('path');
 const BROWSER_FILENAME = 'browser.json';
 
 const DEFAULT_CONFIG = {
-  browser: 'yandex',
+  browser: 'custom',
   executablePath: null,
 };
 
@@ -31,10 +31,7 @@ function getConfigPath(userDataPath) {
 }
 
 function normalizeBrowser(value) {
-  if (value === 'custom') return 'custom';
-  if (value === 'yandex') return 'yandex';
-  // migrate older installs (chromium / firefox / webkit → bundled Yandex path in runner)
-  return 'yandex';
+  return 'custom';
 }
 
 function getBrowserConfig(userDataPath) {
@@ -50,16 +47,11 @@ function getBrowserConfig(userDataPath) {
 function saveBrowserConfig(userDataPath, config) {
   const filePath = getConfigPath(userDataPath);
   const merged = getBrowserConfig(userDataPath);
-  if (config.browser != null) merged.browser = normalizeBrowser(config.browser);
+  merged.browser = 'custom';
   if (config.executablePath !== undefined) merged.executablePath = config.executablePath;
-  if (merged.browser !== 'yandex' && merged.browser !== 'custom') merged.browser = 'yandex';
-  if (merged.browser === 'custom') {
-    const p = merged.executablePath != null ? String(merged.executablePath).trim() : '';
-    if (!p) throw new Error('Custom browser requires a path to the executable');
-    merged.executablePath = p;
-  } else {
-    merged.executablePath = null;
-  }
+  const p = merged.executablePath != null ? String(merged.executablePath).trim() : '';
+  if (!p) throw new Error('Browser executable path is required');
+  merged.executablePath = p;
   writeJsonAtomic(filePath, merged);
   return getBrowserConfig(userDataPath);
 }
