@@ -32,7 +32,7 @@ There is no other free, desktop, no-code tool that does **AI test generation + G
 | **AI test generation** | Connect OpenRouter (or compatible API); generate UI and API scenarios from pages and Swagger. |
 | **Page parser** | Open any URL; the app extracts clickable elements and builds stable selectors (e.g. `data-testid`, `data-qa`, `id`). |
 | **Swagger/OpenAPI** | Import spec by URL; get endpoints and generate API test scenarios. |
-| **Playwright execution** | Run UI tests in Chromium (bundled). Fast, reliable, no extra install. |
+| **Playwright execution** | Run UI tests in Chromium-based browsers using the executable path from Settings. |
 | **API test runner** | Execute HTTP requests, assert status and body (e.g. JSONPath). |
 | **Git integration** | Open a folder that is a Git repo; commit and push tests with your team. |
 | **Reports** | View run results and history inside the app. |
@@ -43,7 +43,7 @@ There is no other free, desktop, no-code tool that does **AI test generation + G
 
 - **OS:** Windows 10/11 (x64)
 - **RAM:** 4 GB minimum, 8 GB recommended
-- **Disk:** ~500 MB for app + bundled Chromium
+- **Browser for UI runs:** Any installed Chromium-based browser (set executable path in Settings)
 - **AI (optional):** OpenRouter API key (or compatible OpenAI-style API) for AI test generation
 
 ---
@@ -86,6 +86,7 @@ Output: `dist/TestBlox Setup 1.0.0.exe` and `dist/TestBlox 1.0.0.exe` (portable)
    - With AI: open Settings → set OpenRouter API key and model → use "Generate with AI" on a page or "Generate from selection" for pages + Swagger.
 
 4. **Run tests**  
+   - Open **Settings** once and set your browser executable path (used globally for all test runs).  
    - Select one or more tests and run.  
    - Check the report in the app.
 
@@ -99,12 +100,18 @@ Output: `dist/TestBlox Setup 1.0.0.exe` and `dist/TestBlox 1.0.0.exe` (portable)
 1. Get an API key from [OpenRouter](https://openrouter.ai/).
 2. In TestBlox: **Settings** → **LLM**.
 3. Set:
-   - **API URL:** `https://openrouter.ai/api/v1/chat/completions`
+   - **API URL:** displayed in Settings (fixed by build config for custom builds)
    - **API key:** your key
    - **Model:** e.g. `openai/gpt-4o-mini` or another model you prefer.
 4. Save. You can now use "Generate with AI" and "Generate from selection".
 
-**Using env instead of storing the key:** You can set `TESTBLOX_LLM_API_KEY` (and optionally `TESTBLOX_LLM_MODEL`, `TESTBLOX_LLM_API_BASE_URL`) in your environment or in a `.env` file in the workspace root. The app loads workspace `.env` before calling the LLM, so the key is never saved in Settings or in `.testblox/llm.json`. In CI, set these variables in your pipeline (e.g. GitHub Secrets, GitLab CI variables).
+**Using env instead of storing the key:** You can set `TESTBLOX_LLM_API_KEY` (and optionally `TESTBLOX_LLM_MODEL`) in your environment or in a `.env` file in the workspace root. The app loads workspace `.env` before calling the LLM, so the key is never saved in Settings or in `.testblox/llm.json`. In CI, set these variables in your pipeline (e.g. GitHub Secrets, GitLab CI variables).
+
+## Custom build release tagging
+
+- Custom builds are published only from Git tags in format `custom-v*`.
+- Workflow file: `.github/workflows/custom-release.yml`.
+- For custom builds, the LLM base URL is embedded during build via `TESTBLOX_BUILD_LLM_API_BASE_URL` and shown as read-only in Settings.
 
 ---
 

@@ -3,7 +3,6 @@ const playwright = require('playwright');
 const filestore = require('../store/filestore');
 const reportsStore = require('../store/reports');
 const browserConfig = require('../store/browserConfig');
-const getBundledYandexExecutablePath = require('../utils/bundledYandexBrowser');
 const { assertHttpsRequestUrl, assertHttpsOrAboutBlank } = require('../utils/requireHttpsUrl');
 
 function resolveVariableValue(v) {
@@ -173,18 +172,13 @@ async function runTest(workspacePath, testId, options = {}) {
 
     if (hasUiSteps) {
       const userDataPath = options.userDataPath;
-      const config = userDataPath ? browserConfig.getBrowserConfig(userDataPath) : { browser: 'yandex', executablePath: null };
+      const config = userDataPath ? browserConfig.getBrowserConfig(userDataPath) : { browser: 'custom', executablePath: null };
       const headless = options.headless !== false;
       const engine = playwright.chromium;
       const launchOpts = { headless };
-      if (config.browser === 'custom') {
-        const p = config.executablePath != null ? String(config.executablePath).trim() : '';
-        if (!p) throw new Error('Custom browser path is not set; choose Yandex (bundled) or set an executable path in Settings');
-        launchOpts.executablePath = p;
-      } else {
-        const bundled = getBundledYandexExecutablePath();
-        if (bundled) launchOpts.executablePath = bundled;
-      }
+      const p = config.executablePath != null ? String(config.executablePath).trim() : '';
+      if (!p) throw new Error('Browser executable path is not set in Settings.');
+      launchOpts.executablePath = p;
       browser = await engine.launch(launchOpts);
       const viewportSize = { width: viewport.width || 1920, height: viewport.height || 1080 };
       const context = await browser.newContext({ viewport: viewportSize });

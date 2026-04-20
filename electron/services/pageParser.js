@@ -2,16 +2,13 @@ const { app } = require('electron');
 const { chromium } = require('playwright');
 const { JSDOM } = require('jsdom');
 const browserConfig = require('../store/browserConfig');
-const getBundledYandexExecutablePath = require('../utils/bundledYandexBrowser');
 
 function resolveParseExecutablePath() {
   const userData = app.getPath('userData');
   const config = browserConfig.getBrowserConfig(userData);
-  if (config.browser === 'custom' && config.executablePath) {
-    const p = String(config.executablePath).trim();
-    if (p) return p;
-  }
-  return getBundledYandexExecutablePath();
+  const p = config.executablePath ? String(config.executablePath).trim() : '';
+  if (!p) throw new Error('Browser executable path is not set in Settings.');
+  return p;
 }
 
 function escapeCssSelector(value) {

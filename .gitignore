@@ -1,10 +1,10 @@
+dist-bundled-browser
 # Dependencies
 node_modules
 
 # Build outputs
 dist
 dist-playwright-browsers
-dist-bundled-browser
 renderer
 release
 
