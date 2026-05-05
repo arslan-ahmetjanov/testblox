@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const playwright = require('playwright');
 const filestore = require('../store/filestore');
@@ -64,6 +65,74 @@ function buildAuthHeaders(endpointAuth, stepAuth, varsMap) {
     return { Authorization: `Basic ${encoded}` };
   }
   return {};
+}
+
+function normalizeFormRows(bodyDef) {
+  if (!bodyDef) return [];
+  if (Array.isArray(bodyDef)) {
+    return bodyDef.filter((r) => r && (r.key || r.name));
+  }
+  if (typeof bodyDef === 'object') {
+    return Object.entries(bodyDef).map(([key, value]) => ({ key, value }));
+  }
+  return [];
+}
+
+function buildMultipartObject(bodyDef, varsMap) {
+  const rows = normalizeFormRows(bodyDef);
+  const out = {};
+  for (const row of rows) {
+    const name = String(row.key ?? row.name ?? '').trim();
+    if (!name) continue;
+    const ft = row.fieldType === 'file' || row.type === 'file' ? 'file' : 'text';
+    if (ft === 'file') {
+      const fp = substitute(String(row.value || ''), varsMap);
+      if (!fp || !fs.existsSync(fp)) throw new Error(`Multipart file not found: ${fp}`);
+      const buf = fs.readFileSync(fp);
+      const base = path.basename(fp);
+      out[name] = {
+        name: base,
+        mimeType: row.mimeType || 'application/octet-stream',
+        buffer: buf,
+      };
+    } else {
+      out[name] = substitute(String(row.value ?? ''), varsMap);
+    }
+  }
+  return out;
+}
+
+function effectiveBodyMode(endpoint, step) {
+  let mode = step.bodyMode ?? endpoint.bodyMode ?? null;
+  if (!mode && endpoint.requestBody != null && endpoint.requestBody !== '') return 'raw';
+  if (!mode) return 'none';
+  return mode;
+}
+
+function getRawBodyContent(endpoint, step, varsMap) {
+  let raw = step.body !== undefined && step.body !== null ? step.body : endpoint.body;
+  if (typeof raw === 'string') {
+    raw = substitute(raw, varsMap);
+    try {
+      return raw ? JSON.parse(raw) : undefined;
+    } catch {
+      return raw;
+    }
+  }
+  if (raw && typeof raw === 'object') return raw;
+  if (endpoint.requestBody != null && (step.body === undefined || step.body === null)) {
+    let rb = endpoint.requestBody;
+    if (typeof rb === 'string') {
+      rb = substitute(rb, varsMap);
+      try {
+        return rb ? JSON.parse(rb) : undefined;
+      } catch {
+        return rb;
+      }
+    }
+    return rb;
+  }
+  return undefined;
 }
 
 const MAX_SHARED_STEP_DEPTH = 5;
@@ -237,15 +306,13 @@ async function runTest(workspacePath, testId, options = {}) {
             const baseUrl = substitute(baseUrlStr, varsMap).trim() || '';
             let path = substitute(endpoint.path || '/', varsMap);
             const method = (endpoint.method || 'GET').toUpperCase();
-            let body = step.body;
-            if (typeof body === 'string') {
-              body = substitute(body, varsMap);
-              try { body = body ? JSON.parse(body) : undefined; } catch (_) {}
-            }
+            const bodyMode = effectiveBodyMode(endpoint, step);
+
             const endpointHeaders = endpoint.headers && typeof endpoint.headers === 'object' ? endpoint.headers : {};
             const stepHeaders = step.headers && typeof step.headers === 'object' ? step.headers : {};
             const authHeaders = buildAuthHeaders(endpoint.auth, step.auth, varsMap);
-            const allHeaders = { 'Content-Type': 'application/json', ...endpointHeaders, ...stepHeaders, ...authHeaders };
+            let allHeaders = { ...endpointHeaders, ...stepHeaders, ...authHeaders };
+
             const endpointQuery = parametersToQuery(endpoint.parameters, varsMap);
             const stepQuery = step.query && typeof step.query === 'object' ? step.query : {};
             const query = { ...endpointQuery, ...stepQuery };
@@ -255,19 +322,57 @@ async function runTest(workspacePath, testId, options = {}) {
             const url = (baseUrl + path).replace(/([^:]\/)\/+/g, '$1') + queryStr;
             assertHttpsRequestUrl(url, 'API request URL');
 
+            const fetchOptions = {
+              method,
+              headers: { ...allHeaders },
+              timeout: 30000,
+            };
+
+            const sendBody = method !== 'GET' && method !== 'HEAD' && bodyMode !== 'none';
+
+            if (sendBody && bodyMode === 'raw') {
+              if (!fetchOptions.headers['Content-Type'] && !fetchOptions.headers['content-type']) {
+                fetchOptions.headers['Content-Type'] = 'application/json';
+              }
+              fetchOptions.data = getRawBodyContent(endpoint, step, varsMap);
+            } else if (sendBody && bodyMode === 'x-www-form-urlencoded') {
+              delete fetchOptions.headers['Content-Type'];
+              delete fetchOptions.headers['content-type'];
+              const bodySrc = step.body !== undefined && step.body !== null ? step.body : endpoint.body;
+              const rows = normalizeFormRows(bodySrc);
+              const formObj = {};
+              for (const row of rows) {
+                const k = String(row.key ?? row.name ?? '').trim();
+                if (k) formObj[k] = substitute(String(row.value ?? ''), varsMap);
+              }
+              fetchOptions.form = formObj;
+            } else if (sendBody && bodyMode === 'form-data') {
+              delete fetchOptions.headers['Content-Type'];
+              delete fetchOptions.headers['content-type'];
+              const bodySrc = step.body !== undefined && step.body !== null ? step.body : endpoint.body;
+              fetchOptions.multipart = buildMultipartObject(bodySrc, varsMap);
+            }
+
+            let bodyPreview = undefined;
+            if (fetchOptions.data !== undefined) {
+              bodyPreview =
+                typeof fetchOptions.data === 'string'
+                  ? fetchOptions.data
+                  : JSON.stringify(fetchOptions.data);
+            } else if (fetchOptions.form) {
+              bodyPreview = JSON.stringify(fetchOptions.form);
+            } else if (fetchOptions.multipart) {
+              bodyPreview = '[multipart/form-data]';
+            }
+
             stepRequest = {
               method,
               url,
-              headers: allHeaders,
-              body: method !== 'GET' && body != null ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined,
+              headers: fetchOptions.headers,
+              body: bodyPreview,
             };
 
-            const res = await requestContext.fetch(url, {
-              method,
-              headers: allHeaders,
-              data: method !== 'GET' ? body : undefined,
-              timeout: 30000,
-            });
+            const res = await requestContext.fetch(url, fetchOptions);
 
             const resBodyText = await res.text();
             let resData;
@@ -474,4 +579,11 @@ async function executeStep(page, actionName, selector, value, title) {
   }
 }
 
-module.exports = { runTest, substitute };
+module.exports = {
+  runTest,
+  substitute,
+  effectiveBodyMode,
+  getRawBodyContent,
+  normalizeFormRows,
+  buildMultipartObject,
+};

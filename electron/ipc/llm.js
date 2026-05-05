@@ -16,11 +16,13 @@ function registerLlmIpc() {
     }
     const globalConfig = llmConfig.getGlobalConfig(userData);
     const workspaceConfig = workspacePath ? llmConfig.getWorkspaceConfig(workspacePath) : null;
-    const effective = llmConfig.getEffectiveConfig(userData, workspacePath);
+    const effectiveDetails = llmConfig.getEffectiveConfigDetails(userData, workspacePath);
+    const effective = effectiveDetails.values;
     return {
       global: { ...globalConfig, apiKey: globalConfig.apiKey ? '***' : null },
       workspace: workspaceConfig ? { ...workspaceConfig, apiKey: workspaceConfig.apiKey ? '***' : null } : null,
       effective: { ...effective, apiKey: effective.apiKey ? '***' : null },
+      sources: effectiveDetails.sources,
       isValid: llmConfig.isConfigValid(effective),
       apiBaseUrlLocked: true,
       buildFlavor: buildConfig.flavor,
@@ -50,7 +52,7 @@ function registerLlmIpc() {
   ipcMain.handle('llm:getEffectiveForAPI', () => {
     const userData = require('electron').app.getPath('userData');
     const workspacePath = getCurrentPath();
-    return llmConfig.getEffectiveConfig(userData, workspacePath);
+    return llmConfig.getEffectiveConfigDetails(userData, workspacePath);
   });
 }
 

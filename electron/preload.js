@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // LLM (OpenRouter)
   llmGetConfig: () => ipcRenderer.invoke('llm:getConfig'),
   llmSaveConfig: (opts) => ipcRenderer.invoke('llm:saveConfig', opts),
+  llmGetEffectiveForAPI: () => ipcRenderer.invoke('llm:getEffectiveForAPI'),
   // Browser (for UI tests)
   browserGetConfig: () => ipcRenderer.invoke('browser:getConfig'),
   browserSaveConfig: (opts) => ipcRenderer.invoke('browser:saveConfig', opts),

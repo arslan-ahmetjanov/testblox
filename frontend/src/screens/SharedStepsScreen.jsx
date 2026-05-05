@@ -21,10 +21,11 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import ApiRequestEditor from '../components/ApiRequestEditor';
 import ScreenHeader from '../components/ScreenHeader';
 import SectionLabel from '../components/SectionLabel';
 import TestStepEditorCards from '../components/TestStepEditorCards';
-import { isStepApi } from '../utils/testSteps';
+import { buildApiStepEditorInitial, isStepApi } from '../utils/testSteps';
 
 export default function SharedStepsScreen({ onBack, onRefresh }) {
   const [list, setList] = useState([]);
@@ -37,9 +38,9 @@ export default function SharedStepsScreen({ onBack, onRefresh }) {
   const [apiBases, setApiBases] = useState([]);
   const [actions, setActions] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [bodyModalOpen, setBodyModalOpen] = useState(false);
-  const [bodyModalStepIndex, setBodyModalStepIndex] = useState(null);
-  const [bodyModalValue, setBodyModalValue] = useState('');
+  const [apiEditorOpen, setApiEditorOpen] = useState(false);
+  const [apiEditorStepIndex, setApiEditorStepIndex] = useState(null);
+  const [apiEditorInitial, setApiEditorInitial] = useState(null);
   const [savedStepsSignature, setSavedStepsSignature] = useState(null);
 
   const load = () => {
@@ -135,6 +136,33 @@ export default function SharedStepsScreen({ onBack, onRefresh }) {
       n[index] = { ...n[index], [field]: value };
       return n;
     });
+  };
+
+  const handleOpenApiEditor = (index, initial) => {
+    setApiEditorStepIndex(index);
+    setApiEditorInitial(initial);
+    setApiEditorOpen(true);
+  };
+
+  const handleSaveApiEditor = async ({ stepPatch, endpointPatch }) => {
+    if (apiEditorStepIndex == null || !steps[apiEditorStepIndex]) return;
+    const step = steps[apiEditorStepIndex];
+    if (endpointPatch && step.endpointId) {
+      try {
+        await window.electronAPI.updateEndpoint(step.endpointId, endpointPatch);
+        window.electronAPI.listEndpoints?.().then(setEndpoints).catch(() => {});
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setSteps((s) => {
+      const n = [...s];
+      const idx = apiEditorStepIndex;
+      if (idx == null || !n[idx]) return s;
+      n[idx] = { ...n[idx], ...(stepPatch || {}) };
+      return n;
+    });
+    setApiEditorOpen(false);
   };
 
   const handleRemoveStep = (index) => {
@@ -272,11 +300,7 @@ export default function SharedStepsScreen({ onBack, onRefresh }) {
               onApiStepChange={handleApiStepChange}
               onRemoveStep={handleRemoveStep}
               onMoveStep={handleMoveStep}
-              onOpenBodyModal={(index, bodyStr) => {
-                setBodyModalStepIndex(index);
-                setBodyModalValue(bodyStr);
-                setBodyModalOpen(true);
-              }}
+              onOpenApiEditor={handleOpenApiEditor}
             />
           )}
         </DialogContent>
@@ -286,36 +310,14 @@ export default function SharedStepsScreen({ onBack, onRefresh }) {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={bodyModalOpen} onClose={() => setBodyModalOpen(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { bgcolor: 'background.paper' } }}>
-        <DialogTitle sx={{ color: 'text.primary' }}>Edit request body</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            multiline
-            minRows={16}
-            maxRows={32}
-            value={bodyModalValue}
-            onChange={(e) => setBodyModalValue(e.target.value)}
-            placeholder='{"key": "value"}'
-            sx={{ mt: 1, fontFamily: 'monospace', fontSize: '0.875rem', '& .MuiOutlinedInput-root': { color: 'text.primary', alignItems: 'flex-start' } }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setBodyModalOpen(false)} sx={{ color: 'text.secondary' }}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => {
-              if (bodyModalStepIndex != null && steps[bodyModalStepIndex]) {
-                handleApiStepChange(bodyModalStepIndex, 'body', bodyModalValue);
-              }
-              setBodyModalOpen(false);
-            }}
-          >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ApiRequestEditor
+        variant="step"
+        open={apiEditorOpen && !!apiEditorInitial}
+        onClose={() => setApiEditorOpen(false)}
+        dialogTitle="Edit API request"
+        initial={apiEditorInitial}
+        onSaveStep={handleSaveApiEditor}
+      />
     </Box>
   );
 }

@@ -21,9 +21,10 @@ import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
+import ApiRequestEditor from '../components/ApiRequestEditor';
 import SectionLabel from '../components/SectionLabel';
 import TestStepEditorCards from '../components/TestStepEditorCards';
-import { isStepApi } from '../utils/testSteps';
+import { buildApiStepEditorInitial, isStepApi } from '../utils/testSteps';
 
 export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun, onViewReport }) {
   const [test, setTest] = useState(null);
@@ -41,9 +42,9 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
   const [runResultModalOpen, setRunResultModalOpen] = useState(false);
   const [runReport, setRunReport] = useState(null);
   const [runError, setRunError] = useState(null);
-  const [bodyModalOpen, setBodyModalOpen] = useState(false);
-  const [bodyModalStepIndex, setBodyModalStepIndex] = useState(null);
-  const [bodyModalValue, setBodyModalValue] = useState('');
+  const [apiEditorOpen, setApiEditorOpen] = useState(false);
+  const [apiEditorStepIndex, setApiEditorStepIndex] = useState(null);
+  const [apiEditorInitial, setApiEditorInitial] = useState(null);
   const [savedStepsSignature, setSavedStepsSignature] = useState(null);
 
   useEffect(() => {
@@ -201,6 +202,33 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
     });
   };
 
+  const handleOpenApiEditor = (index, initial) => {
+    setApiEditorStepIndex(index);
+    setApiEditorInitial(initial);
+    setApiEditorOpen(true);
+  };
+
+  const handleSaveApiEditor = async ({ stepPatch, endpointPatch }) => {
+    if (apiEditorStepIndex == null || !test?.steps?.[apiEditorStepIndex]) return;
+    const step = test.steps[apiEditorStepIndex];
+    if (endpointPatch && step.endpointId) {
+      try {
+        await window.electronAPI.updateEndpoint(step.endpointId, endpointPatch);
+        window.electronAPI.listEndpoints().then(setEndpoints).catch(() => {});
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setTest((t) => {
+      if (!t || apiEditorStepIndex == null) return t;
+      const s = [...(t.steps || [])];
+      if (!s[apiEditorStepIndex]) return t;
+      s[apiEditorStepIndex] = { ...s[apiEditorStepIndex], ...(stepPatch || {}) };
+      return { ...t, steps: s };
+    });
+    setApiEditorOpen(false);
+  };
+
   const handleRemoveStep = (index) => {
     setTest((t) => {
       if (!t) return null;
@@ -342,36 +370,14 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
         </DialogActions>
       </Dialog>
 
-      <Dialog open={bodyModalOpen} onClose={() => setBodyModalOpen(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { bgcolor: 'background.paper' } }}>
-        <DialogTitle sx={{ color: 'text.primary' }}>Edit request body</DialogTitle>
-        <DialogContent>
-          <TextField
-            fullWidth
-            multiline
-            minRows={16}
-            maxRows={32}
-            value={bodyModalValue}
-            onChange={(e) => setBodyModalValue(e.target.value)}
-            placeholder='{"key": "value"}'
-            sx={{ mt: 1, fontFamily: 'monospace', fontSize: '0.875rem', '& .MuiOutlinedInput-root': { color: 'text.primary', alignItems: 'flex-start' } }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setBodyModalOpen(false)} sx={{ color: 'text.secondary' }}>Cancel</Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => {
-              if (bodyModalStepIndex != null && test?.steps?.[bodyModalStepIndex]) {
-                handleApiStepChange(bodyModalStepIndex, 'body', bodyModalValue);
-              }
-              setBodyModalOpen(false);
-            }}
-          >
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <ApiRequestEditor
+        variant="step"
+        open={apiEditorOpen && !!apiEditorInitial}
+        onClose={() => setApiEditorOpen(false)}
+        dialogTitle="Edit API request"
+        initial={apiEditorInitial}
+        onSaveStep={handleSaveApiEditor}
+      />
 
       {!isApiTest && <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>Page: {page?.title || test.pageId}</Typography>}
       {stepsDirty && (
@@ -440,11 +446,7 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
             onApiStepChange={handleApiStepChange}
             onRemoveStep={handleRemoveStep}
             onMoveStep={handleMoveStep}
-            onOpenBodyModal={(index, bodyStr) => {
-              setBodyModalStepIndex(index);
-              setBodyModalValue(bodyStr);
-              setBodyModalOpen(true);
-            }}
+            onOpenApiEditor={handleOpenApiEditor}
           />
         )}
       </Paper>

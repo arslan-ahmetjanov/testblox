@@ -605,10 +605,23 @@ function listEndpoints(rootPath, baseId = null) {
   return list;
 }
 
+function normalizeEndpointBody(ep) {
+  if (!ep) return ep;
+  let bodyMode = ep.bodyMode;
+  let body = ep.body;
+  if (!bodyMode && ep.requestBody != null && ep.requestBody !== '') {
+    bodyMode = 'raw';
+    body = body !== undefined && body !== null ? body : ep.requestBody;
+  }
+  if (!bodyMode) bodyMode = 'none';
+  return { ...ep, bodyMode, body };
+}
+
 function readEndpoint(rootPath, endpointId) {
   const p = getPaths(rootPath);
   const filePath = path.join(p.endpointsDir, endpointId + '.json');
-  return readJsonSafe(filePath);
+  const ep = readJsonSafe(filePath);
+  return ep ? normalizeEndpointBody(ep) : null;
 }
 
 function writeEndpoint(rootPath, endpoint) {
@@ -630,6 +643,8 @@ function createEndpoint(rootPath, data) {
     baseId: data.baseId ?? null,
     baseUrl: data.baseUrl || '',
     requestBody: data.requestBody || null,
+    bodyMode: data.bodyMode || 'none',
+    body: data.body !== undefined ? data.body : null,
     parameters: data.parameters || [],
     headers: data.headers && typeof data.headers === 'object' ? data.headers : {},
     auth: data.auth && typeof data.auth === 'object' ? data.auth : null,
@@ -652,6 +667,8 @@ function updateEndpoint(rootPath, endpointId, data) {
   if (data.baseId !== undefined) endpoint.baseId = data.baseId;
   if (data.baseUrl !== undefined) endpoint.baseUrl = data.baseUrl;
   if (data.requestBody !== undefined) endpoint.requestBody = data.requestBody;
+  if (data.bodyMode !== undefined) endpoint.bodyMode = data.bodyMode;
+  if (data.body !== undefined) endpoint.body = data.body;
   if (Array.isArray(data.parameters)) endpoint.parameters = data.parameters;
   if (data.headers !== undefined) endpoint.headers = data.headers && typeof data.headers === 'object' ? data.headers : {};
   if (data.auth !== undefined) endpoint.auth = data.auth && typeof data.auth === 'object' ? data.auth : null;

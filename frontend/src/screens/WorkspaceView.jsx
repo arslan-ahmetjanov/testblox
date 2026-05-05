@@ -120,6 +120,14 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
+  const llmSourceLabel = (source) => {
+    if (source === 'env') return 'Environment (.env / process env)';
+    if (source === 'workspace') return 'Workspace config';
+    if (source === 'global') return 'Global config';
+    if (source === 'buildConfig') return 'Build config';
+    return 'Default';
+  };
+
   const loadGit = async () => {
     if (!window.electronAPI) return;
     const root = await window.electronAPI.gitRootPath(workspacePath);
@@ -936,6 +944,11 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
           <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 2 }}>
             Or set TESTBLOX_LLM_API_KEY in env (e.g. in .env in workspace root) to avoid storing the key here.
           </Typography>
+          {llmConfig?.sources?.apiKey === 'env' && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Effective API key is currently coming from environment variables. Saved value may not be used until env override is removed.
+            </Alert>
+          )}
           <TextField
             fullWidth
             label="Model name"
@@ -958,6 +971,9 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
           <Button size="small" onClick={() => setLlmForm((f) => ({ ...f, scope: f.scope === 'global' ? 'workspace' : 'global' }))} sx={{ ml: 1, color: 'secondary.main' }}>
             Switch to {llmForm.scope === 'global' ? 'workspace' : 'global'}
           </Button>
+          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1.5 }}>
+            Effective sources: API key - {llmSourceLabel(llmConfig?.sources?.apiKey)}, model - {llmSourceLabel(llmConfig?.sources?.modelName)}, base URL - {llmSourceLabel(llmConfig?.sources?.apiBaseUrl)}.
+          </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSettingsOpen(false)} sx={{ color: 'text.secondary' }}>Cancel</Button>

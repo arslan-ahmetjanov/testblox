@@ -62,29 +62,57 @@ function getWorkspaceConfig(workspaceRoot) {
   };
 }
 
+function chooseValueWithSource({ envValue, workspaceValue, globalValue, defaultValue = null }) {
+  if (envValue !== undefined && envValue !== null) {
+    return { value: envValue, source: 'env' };
+  }
+  if (workspaceValue !== undefined && workspaceValue !== null) {
+    return { value: workspaceValue, source: 'workspace' };
+  }
+  if (globalValue !== undefined && globalValue !== null) {
+    return { value: globalValue, source: 'global' };
+  }
+  return { value: defaultValue, source: 'default' };
+}
+
+function getEffectiveConfigDetails(userDataPath, workspaceRoot) {
+  const buildConfig = readBuildConfig();
+  const workspace = workspaceRoot ? getWorkspaceConfig(workspaceRoot) : null;
+  const globalConfig = getGlobalConfig(userDataPath);
+
+  const apiKeyResolved = chooseValueWithSource({
+    envValue: process.env.TESTBLOX_LLM_API_KEY,
+    workspaceValue: workspace?.apiKey,
+    globalValue: globalConfig.apiKey,
+    defaultValue: null,
+  });
+  const modelNameResolved = chooseValueWithSource({
+    envValue: process.env.TESTBLOX_LLM_MODEL,
+    workspaceValue: workspace?.modelName,
+    globalValue: globalConfig.modelName,
+    defaultValue: null,
+  });
+
+  return {
+    values: {
+      apiKey: apiKeyResolved.value,
+      modelName: modelNameResolved.value,
+      apiBaseUrl: buildConfig.llmApiBaseUrl,
+    },
+    sources: {
+      apiKey: apiKeyResolved.source,
+      modelName: modelNameResolved.source,
+      apiBaseUrl: 'buildConfig',
+    },
+  };
+}
+
 /**
  * Effective config: workspace override first, then global, then env. For API calls (e.g. OpenRouter).
  * Env: TESTBLOX_LLM_API_KEY, TESTBLOX_LLM_MODEL, TESTBLOX_LLM_API_BASE_URL.
  */
 function getEffectiveConfig(userDataPath, workspaceRoot) {
-  const buildConfig = readBuildConfig();
-  const workspace = workspaceRoot ? getWorkspaceConfig(workspaceRoot) : null;
-  const globalConfig = getGlobalConfig(userDataPath);
-  let effective;
-  if (workspace && (workspace.apiKey || workspace.modelName || workspace.apiBaseUrl)) {
-    effective = {
-      apiKey: workspace.apiKey ?? globalConfig.apiKey,
-      modelName: workspace.modelName ?? globalConfig.modelName,
-      apiBaseUrl: workspace.apiBaseUrl ?? globalConfig.apiBaseUrl,
-    };
-  } else {
-    effective = { ...globalConfig };
-  }
-  return {
-    apiKey: process.env.TESTBLOX_LLM_API_KEY ?? effective.apiKey,
-    modelName: process.env.TESTBLOX_LLM_MODEL ?? effective.modelName,
-    apiBaseUrl: buildConfig.llmApiBaseUrl,
-  };
+  return getEffectiveConfigDetails(userDataPath, workspaceRoot).values;
 }
 
 function saveGlobalConfig(userDataPath, config) {
@@ -120,6 +148,7 @@ module.exports = {
   getGlobalConfig,
   getWorkspaceConfig,
   getEffectiveConfig,
+  getEffectiveConfigDetails,
   saveGlobalConfig,
   saveWorkspaceConfig,
   isConfigValid,

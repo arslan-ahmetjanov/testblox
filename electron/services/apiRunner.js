@@ -1,7 +1,15 @@
+const fs = require('fs');
+const path = require('path');
 const axios = require('axios');
+const FormData = require('form-data');
 const filestore = require('../store/filestore');
 const reportsStore = require('../store/reports');
-const { substitute } = require('./playwrightRunner');
+const {
+  substitute,
+  effectiveBodyMode,
+  getRawBodyContent,
+  normalizeFormRows,
+} = require('./playwrightRunner');
 const { assertHttpsRequestUrl } = require('../utils/requireHttpsUrl');
 
 /** Build query object from endpoint.parameters (array of { name, value } or { name, in, value }). */
@@ -36,6 +44,35 @@ function applyAuth(axiosConfig, endpointAuth, stepAuth, varsMap) {
     const password = substitute(String(auth.password || ''), varsMap);
     axiosConfig.auth = { username, password };
   }
+}
+
+function buildFormUrlEncoded(bodyDef, varsMap) {
+  const rows = normalizeFormRows(bodyDef);
+  const out = {};
+  for (const row of rows) {
+    const k = String(row.key ?? row.name ?? '').trim();
+    if (!k) continue;
+    out[k] = substitute(String(row.value ?? ''), varsMap);
+  }
+  return out;
+}
+
+function buildMultipartData(bodyDef, varsMap) {
+  const rows = normalizeFormRows(bodyDef);
+  const form = new FormData();
+  for (const row of rows) {
+    const k = String(row.key ?? row.name ?? '').trim();
+    if (!k) continue;
+    const ft = row.fieldType === 'file' || row.type === 'file' ? 'file' : 'text';
+    if (ft === 'file') {
+      const fp = substitute(String(row.value ?? ''), varsMap);
+      if (!fp || !fs.existsSync(fp)) throw new Error(`Multipart file not found: ${fp}`);
+      form.append(k, fs.createReadStream(fp), path.basename(fp));
+    } else {
+      form.append(k, substitute(String(row.value ?? ''), varsMap));
+    }
+  }
+  return form;
 }
 
 /**
@@ -78,26 +115,35 @@ async function runApiTest(workspacePath, testId, options = {}) {
         const url = (baseUrl + path).replace(/([^:]\/)\/+/g, '$1');
         assertHttpsRequestUrl(url, 'API request URL');
         const method = (endpoint.method || 'GET').toUpperCase();
-        let body = step.body;
-        if (typeof body === 'string') {
-          body = substitute(body, varsMap);
-          try { body = body ? JSON.parse(body) : undefined; } catch (_) { /* send as string */ }
-        }
+        const bodyMode = effectiveBodyMode(endpoint, step);
         const endpointHeaders = endpoint.headers && typeof endpoint.headers === 'object' ? endpoint.headers : {};
         const stepHeaders = step.headers && typeof step.headers === 'object' ? step.headers : {};
-        const headers = { 'Content-Type': 'application/json', ...endpointHeaders, ...stepHeaders };
+        const headers = { ...endpointHeaders, ...stepHeaders };
         const endpointQuery = parametersToQuery(endpoint.parameters, varsMap);
         const stepQuery = step.query && typeof step.query === 'object' ? step.query : {};
         const params = { ...endpointQuery, ...stepQuery };
         const axiosConfig = {
           url,
           method,
-          data: method !== 'GET' ? body : undefined,
           params,
           headers,
           timeout: 30000,
           validateStatus: () => true,
         };
+        const sendBody = method !== 'GET' && method !== 'HEAD' && bodyMode !== 'none';
+        if (sendBody && bodyMode === 'raw') {
+          if (!axiosConfig.headers['Content-Type'] && !axiosConfig.headers['content-type']) {
+            axiosConfig.headers['Content-Type'] = 'application/json';
+          }
+          axiosConfig.data = getRawBodyContent(endpoint, step, varsMap);
+        } else if (sendBody && bodyMode === 'x-www-form-urlencoded') {
+          axiosConfig.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+          axiosConfig.data = new URLSearchParams(buildFormUrlEncoded(step.body ?? endpoint.body, varsMap)).toString();
+        } else if (sendBody && bodyMode === 'form-data') {
+          const form = buildMultipartData(step.body ?? endpoint.body, varsMap);
+          axiosConfig.data = form;
+          axiosConfig.headers = { ...axiosConfig.headers, ...form.getHeaders() };
+        }
         applyAuth(axiosConfig, endpoint.auth, step.auth, varsMap);
         const res = await axios.request(axiosConfig);
         lastResponse = res;
