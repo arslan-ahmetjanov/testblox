@@ -298,7 +298,7 @@ export default function RunScreen({ onBack, onRefresh, onViewReport }) {
       </Paper>
       <Paper sx={{ p: 2, mb: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
         <SectionLabel>Run options</SectionLabel>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mt: 1 }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mt: 1, columnGap: 2, rowGap: 1 }}>
           <FormControl size="small" sx={{ minWidth: 100 }}>
             <InputLabel id="run-workers-label" sx={{ color: 'text.secondary' }}>Workers</InputLabel>
             <Select
@@ -313,34 +313,34 @@ export default function RunScreen({ onBack, onRefresh, onViewReport }) {
               ))}
             </Select>
           </FormControl>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={screenshotOnFailureOnly}
-                onChange={(e) => setScreenshotOnFailureOnly(e.target.checked)}
-                sx={{ color: 'primary.main' }}
-              />
-            }
-            label={<Typography sx={{ color: 'text.primary', fontSize: '0.875rem' }}>Screenshots only on failure</Typography>}
-          />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={fileRunLogging}
-                onChange={(e) => setFileRunLogging(e.target.checked)}
-                sx={{ color: 'primary.main' }}
-              />
-            }
-            label={(
-              <Box>
-                <Typography sx={{ color: 'text.primary', fontSize: '0.875rem' }}>Write run logs to disk (debug)</Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                  {`Creates .testblox/run-logs/<session id>/ with run.log, meta.json, and one .log per test.`}
-                </Typography>
-              </Box>
-            )}
-          />
+          <Box sx={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: { xs: 1, sm: 2 } }}>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={screenshotOnFailureOnly}
+                  onChange={(e) => setScreenshotOnFailureOnly(e.target.checked)}
+                  sx={{ color: 'primary.main' }}
+                />
+              }
+              label={<Typography sx={{ color: 'text.primary', fontSize: '0.875rem' }}>Screenshots only on failure</Typography>}
+              sx={{ mr: 0 }}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={fileRunLogging}
+                  onChange={(e) => setFileRunLogging(e.target.checked)}
+                  sx={{ color: 'primary.main' }}
+                />
+              }
+              label={<Typography sx={{ color: 'text.primary', fontSize: '0.875rem' }}>Write run logs to disk (debug)</Typography>}
+              sx={{ mr: 0 }}
+            />
+          </Box>
         </Box>
+        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.75, ml: 0.25 }}>
+          {`When enabled, logs are written under .testblox/run-logs/<session id>/ (run.log, meta.json, one .log per test).`}
+        </Typography>
         <Button
           variant="contained"
           startIcon={running ? <CircularProgress size={20} color="inherit" /> : <PlayArrowIcon />}
