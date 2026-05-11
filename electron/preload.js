@@ -66,6 +66,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openPathInExplorer: (targetPath) => ipcRenderer.invoke('shell:openPath', targetPath),
   generateTestsWithAI: (pageId, customPrompt) => ipcRenderer.invoke('tests:generateWithAI', pageId, customPrompt),
   generateFromSelection: (options) => ipcRenderer.invoke('tests:generateFromSelection', options),
+  onAiGenerateProgress: (cb) => {
+    const fn = (_, e) => cb(e);
+    ipcRenderer.on('main:ai-generate-progress', fn);
+    return () => ipcRenderer.removeListener('main:ai-generate-progress', fn);
+  },
   reportsList: (testId) => ipcRenderer.invoke('reports:list', testId),
   reportsGet: (reportId) => ipcRenderer.invoke('reports:get', reportId),
   reportsGetScreenshot: (reportId, filename) => ipcRenderer.invoke('reports:getScreenshot', reportId, filename),
