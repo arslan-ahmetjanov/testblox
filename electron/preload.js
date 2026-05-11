@@ -4,9 +4,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Dialog
   openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
   openZip: () => ipcRenderer.invoke('dialog:openZip'),
+  openSwaggerJson: () => ipcRenderer.invoke('dialog:openSwaggerJson'),
   selectBrowserExecutable: () => ipcRenderer.invoke('dialog:selectBrowserExecutable'),
   // App
   getPath: (name) => ipcRenderer.invoke('app:getPath', name),
+  windowMinimize: () => ipcRenderer.invoke('window:minimize'),
+  windowToggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+  windowClose: () => ipcRenderer.invoke('window:close'),
+  windowIsMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  onWindowMaximized: (cb) => {
+    const fn = (_, isMaximized) => cb(isMaximized);
+    ipcRenderer.on('main:window-maximized', fn);
+    return () => ipcRenderer.removeListener('main:window-maximized', fn);
+  },
   // Workspace (file store)
   getWorkspacePath: () => ipcRenderer.invoke('workspace:getCurrentPath'),
   getLastOpenedWorkspaces: () => ipcRenderer.invoke('workspace:getLastOpened'),
@@ -39,7 +49,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createEndpoint: (data) => ipcRenderer.invoke('endpoints:create', data),
   updateEndpoint: (id, data) => ipcRenderer.invoke('endpoints:update', id, data),
   deleteEndpoint: (id) => ipcRenderer.invoke('endpoints:delete', id),
-  importSwagger: (urlOrSpec) => ipcRenderer.invoke('endpoints:importSwagger', urlOrSpec),
+  importSwagger: (urlOrSpec, requestOptions) => ipcRenderer.invoke('endpoints:importSwagger', urlOrSpec, requestOptions),
   listPages: () => ipcRenderer.invoke('pages:list'),
   getPage: (id) => ipcRenderer.invoke('pages:get', id),
   createPage: (data) => ipcRenderer.invoke('pages:create', data),
@@ -53,13 +63,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   findDuplicateTests: () => ipcRenderer.invoke('tests:findDuplicates'),
   runTest: (testId, options) => ipcRenderer.invoke('tests:run', testId, options || {}),
   runTests: (opts) => ipcRenderer.invoke('tests:runMany', opts),
+  openPathInExplorer: (targetPath) => ipcRenderer.invoke('shell:openPath', targetPath),
   generateTestsWithAI: (pageId, customPrompt) => ipcRenderer.invoke('tests:generateWithAI', pageId, customPrompt),
   generateFromSelection: (options) => ipcRenderer.invoke('tests:generateFromSelection', options),
   reportsList: (testId) => ipcRenderer.invoke('reports:list', testId),
   reportsGet: (reportId) => ipcRenderer.invoke('reports:get', reportId),
   reportsGetScreenshot: (reportId, filename) => ipcRenderer.invoke('reports:getScreenshot', reportId, filename),
   reportsDelete: (reportId) => ipcRenderer.invoke('reports:delete', reportId),
-  parsePage: (url, viewport) => ipcRenderer.invoke('parser:parsePage', url, viewport),
+  parsePage: (source, viewport, requestOptions) => ipcRenderer.invoke('parser:parsePage', source, viewport, requestOptions),
   onTestRunProgress: (cb) => {
     const fn = (_, e) => cb(e);
     ipcRenderer.on('main:test-run-progress', fn);

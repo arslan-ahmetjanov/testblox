@@ -48,10 +48,11 @@ function saveBrowserConfig(userDataPath, config) {
   const filePath = getConfigPath(userDataPath);
   const merged = getBrowserConfig(userDataPath);
   merged.browser = 'custom';
-  if (config.executablePath !== undefined) merged.executablePath = config.executablePath;
-  const p = merged.executablePath != null ? String(merged.executablePath).trim() : '';
-  if (!p) throw new Error('Browser executable path is required');
-  merged.executablePath = p;
+  if (config && config.executablePath !== undefined) {
+    const raw = config.executablePath;
+    merged.executablePath =
+      raw != null && String(raw).trim() !== '' ? String(raw).trim() : null;
+  }
   writeJsonAtomic(filePath, merged);
   return getBrowserConfig(userDataPath);
 }

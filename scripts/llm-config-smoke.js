@@ -24,11 +24,16 @@ function runFlavorScenario(flavor, expectedBaseUrl) {
   fs.mkdirSync(userDataPath, { recursive: true });
   fs.mkdirSync(workspaceRoot, { recursive: true });
 
-  llmConfig.saveGlobalConfig(userDataPath, { apiKey: 'global-key', modelName: 'global-model' });
   llmConfig.saveWorkspaceConfig(workspaceRoot, { apiKey: 'workspace-key', modelName: 'workspace-model' });
 
   delete process.env.TESTBLOX_LLM_API_KEY;
   delete process.env.TESTBLOX_LLM_MODEL;
+
+  llmConfig.saveGlobalConfig(userDataPath, { apiKey: 'global-key', modelName: 'global-model' });
+  const ignoredGlobal = llmConfig.getEffectiveConfigDetails(userDataPath, null);
+  assert.equal(ignoredGlobal.values.apiKey, null);
+  assert.equal(ignoredGlobal.values.modelName, null);
+  assert.equal(ignoredGlobal.sources.apiKey, 'default');
 
   const fromWorkspace = llmConfig.getEffectiveConfigDetails(userDataPath, workspaceRoot);
   assert.equal(fromWorkspace.values.apiKey, 'workspace-key');
@@ -37,12 +42,6 @@ function runFlavorScenario(flavor, expectedBaseUrl) {
   assert.equal(fromWorkspace.sources.modelName, 'workspace');
   assert.equal(fromWorkspace.values.apiBaseUrl, expectedBaseUrl);
   assert.equal(fromWorkspace.sources.apiBaseUrl, 'buildConfig');
-
-  const fromGlobal = llmConfig.getEffectiveConfigDetails(userDataPath, null);
-  assert.equal(fromGlobal.values.apiKey, 'global-key');
-  assert.equal(fromGlobal.values.modelName, 'global-model');
-  assert.equal(fromGlobal.sources.apiKey, 'global');
-  assert.equal(fromGlobal.sources.modelName, 'global');
 
   process.env.TESTBLOX_LLM_API_KEY = 'env-key';
   process.env.TESTBLOX_LLM_MODEL = 'env-model';

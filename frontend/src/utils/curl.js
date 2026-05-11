@@ -1,6 +1,12 @@
-import { toJsonObject } from 'curlconverter';
 import fetchToCurl from 'fetch-to-curl';
 import { HTTPSnippet } from 'httpsnippet-lite';
+
+/** Lazy: curlconverter pulls web-tree-sitter + WASM; static import blocked WorkspaceView from loading in Electron. */
+let curlconverterLoad = null;
+function getCurlconverter() {
+  if (!curlconverterLoad) curlconverterLoad = import('curlconverter');
+  return curlconverterLoad;
+}
 
 function objectToHar(obj) {
   if (!obj || typeof obj !== 'object') return [];
@@ -36,11 +42,12 @@ export function splitUrl(url) {
 /**
  * Parse cURL into editor-friendly shape (via curlconverter).
  */
-export function parseCurl(curlString) {
+export async function parseCurl(curlString) {
   const trimmed = curlString.trim();
   if (!trimmed.toLowerCase().startsWith('curl')) {
     throw new Error('Command must start with curl');
   }
+  const { toJsonObject } = await getCurlconverter();
   const j = toJsonObject(trimmed);
   const method = (j.method || 'GET').toUpperCase();
   let url = j.url || j.raw_url || '';

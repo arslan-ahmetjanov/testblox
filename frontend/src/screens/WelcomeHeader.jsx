@@ -1,7 +1,6 @@
 import { Box, Paper, Typography, IconButton } from '@mui/material';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
-import TestbloxLogo from '../components/TestbloxLogo';
 
 export default function WelcomeHeader({ themeMode, onToggleTheme }) {
   return (
@@ -18,13 +17,7 @@ export default function WelcomeHeader({ themeMode, onToggleTheme }) {
         borderColor: 'divider',
       }}
     >
-      <Box sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-        <TestbloxLogo size={28} color="currentColor" />
-      </Box>
-      <Typography variant="h6" sx={{ color: 'primary.main', fontWeight: 600 }}>
-        TestBlox
-      </Typography>
-      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+      <Typography variant="subtitle1" sx={{ color: 'text.secondary', fontWeight: 500 }}>
         No workspace open
       </Typography>
       <Box sx={{ flex: 1 }} />

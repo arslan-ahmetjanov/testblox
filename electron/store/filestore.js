@@ -13,6 +13,10 @@ const PAGES_DIR = 'pages';
 const TESTS_DIR = 'tests';
 const ENDPOINTS_DIR = 'endpoints';
 const API_BASES_DIR = 'apiBases';
+const ENV_VAR_PREFIX = 'TESTBLOX_VAR__';
+const ENV_PATTERN_PREFIX = 'TESTBLOX_VAR_PATTERN__';
+const ENV_NAME_PREFIX = 'TESTBLOX_VAR_NAME__';
+const ENV_ID_PREFIX = 'TESTBLOX_VAR_ID__';
 
 function genId() {
   return require('crypto').randomUUID();
@@ -95,6 +99,31 @@ function testReferencesPage(test, pageId) {
   return false;
 }
 
+function isApiStep(step) {
+  if (!step || typeof step !== 'object') return false;
+  return step.type === 'api' || step.type === 'request' || step.type === 'assertStatus' || step.type === 'assertBody';
+}
+
+function inferTestTypeFromSteps(test) {
+  const steps = Array.isArray(test?.steps) ? test.steps : [];
+  if (steps.length === 0) {
+    const fallback = String(test?.type || 'ui').toLowerCase();
+    return fallback === 'api' || fallback === 'hybrid' ? fallback : 'ui';
+  }
+
+  let hasApi = false;
+  let hasUi = false;
+  for (const step of steps) {
+    if (isApiStep(step)) hasApi = true;
+    else hasUi = true;
+    if (hasApi && hasUi) return 'hybrid';
+  }
+  if (hasApi) return 'api';
+  if (hasUi) return 'ui';
+  const fallback = String(test?.type || 'ui').toLowerCase();
+  return fallback === 'api' || fallback === 'hybrid' ? fallback : 'ui';
+}
+
 function initWorkspace(rootPath, title = 'My Workspace') {
   const p = getPaths(rootPath);
   ensureDir(p.base);
@@ -128,7 +157,6 @@ function initWorkspace(rootPath, title = 'My Workspace') {
     withValue: a.withValue,
   }));
   writeJsonAtomic(p.actions, { actions });
-  writeJsonAtomic(p.variables, { variables: [] });
   writeJsonAtomic(p.sharedSteps, { sharedSteps: [] });
 
   const envPath = getEnvPath(rootPath);
@@ -234,11 +262,76 @@ function readActions(rootPath) {
   }));
 }
 
+function encodeVarNameKey(name) {
+  return Buffer.from(String(name), 'utf8').toString('hex').toUpperCase();
+}
+
+function decodeVarNameKey(encoded) {
+  try {
+    return Buffer.from(String(encoded), 'hex').toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+function extractEnvVariables(envObj) {
+  const byEncoded = new Map();
+  for (const [k, v] of Object.entries(envObj || {})) {
+    if (k.startsWith(ENV_ID_PREFIX)) {
+      const encoded = k.slice(ENV_ID_PREFIX.length);
+      const entry = byEncoded.get(encoded) || {};
+      entry.id = String(v);
+      byEncoded.set(encoded, entry);
+      continue;
+    }
+    if (k.startsWith(ENV_NAME_PREFIX)) {
+      const encoded = k.slice(ENV_NAME_PREFIX.length);
+      const entry = byEncoded.get(encoded) || {};
+      entry.name = String(v);
+      byEncoded.set(encoded, entry);
+      continue;
+    }
+    if (k.startsWith(ENV_VAR_PREFIX)) {
+      const encoded = k.slice(ENV_VAR_PREFIX.length);
+      const entry = byEncoded.get(encoded) || {};
+      entry.value = String(v);
+      byEncoded.set(encoded, entry);
+      continue;
+    }
+    if (k.startsWith(ENV_PATTERN_PREFIX)) {
+      const encoded = k.slice(ENV_PATTERN_PREFIX.length);
+      const entry = byEncoded.get(encoded) || {};
+      entry.valuePattern = String(v);
+      byEncoded.set(encoded, entry);
+    }
+  }
+  const out = [];
+  for (const [encoded, entry] of byEncoded.entries()) {
+    const fallbackName = decodeVarNameKey(encoded);
+    const name = entry.name || fallbackName;
+    if (!name || String(name).trim() === '') continue;
+    out.push({
+      id: entry.id && ENTITY_ID_RE.test(entry.id) ? entry.id : genId(),
+      name: String(name).trim(),
+      valuePattern:
+        entry.valuePattern != null && String(entry.valuePattern).trim() !== ''
+          ? String(entry.valuePattern).trim()
+          : undefined,
+      value: entry.value != null ? String(entry.value) : '',
+    });
+  }
+  return out;
+}
+
 function readVariables(rootPath) {
   const p = getPaths(rootPath);
+  const envObj = readEnvFile(rootPath);
+  const envBacked = extractEnvVariables(envObj);
+  if (envBacked.length > 0) return envBacked;
+
+  // Legacy fallback: metadata in variables.json + plain name keys in .env.
   const obj = readJsonSafe(p.variables, { variables: [] });
   const list = Array.isArray(obj.variables) ? obj.variables : [];
-  const envObj = readEnvFile(rootPath);
   return list
     .filter((v) => v && v.name != null && String(v.name).trim() !== '')
     .map((v) => {
@@ -254,33 +347,40 @@ function readVariables(rootPath) {
 function writeVariables(rootPath, variables) {
   const p = getPaths(rootPath);
   ensureDir(p.base);
-  const prevList = readVariables(rootPath);
-  const prevNamesNoPattern = prevList
-    .filter((v) => !(v.valuePattern != null && String(v.valuePattern).trim() !== ''))
-    .map((v) => String(v.name).trim());
+  const envPath = getEnvPath(rootPath);
+  if (!fs.existsSync(envPath)) fs.writeFileSync(envPath, '# TestBlox variables\n', 'utf8');
+
+  const currentEnv = readEnvFile(rootPath);
+  const keysToRemove = Object.keys(currentEnv).filter(
+    (k) =>
+      k.startsWith(ENV_VAR_PREFIX) ||
+      k.startsWith(ENV_PATTERN_PREFIX) ||
+      k.startsWith(ENV_NAME_PREFIX) ||
+      k.startsWith(ENV_ID_PREFIX)
+  );
+
+  const nextEnvEntries = {};
   const normalized = (Array.isArray(variables) ? variables : [])
     .filter((v) => v && v.name != null && String(v.name).trim() !== '')
     .map((v) => ({
       id: v.id || genId(),
       name: String(v.name).trim(),
       valuePattern: v.valuePattern != null && String(v.valuePattern).trim() !== '' ? String(v.valuePattern).trim() : undefined,
+      value: v.value != null ? String(v.value) : '',
     }));
-  const envObj = {};
-  const newNamesNoPattern = [];
-  (Array.isArray(variables) ? variables : []).forEach((v) => {
-    if (!v || v.name == null || String(v.name).trim() === '') return;
-    const name = String(v.name).trim();
-    const hasPattern = v.valuePattern != null && String(v.valuePattern).trim() !== '';
-    if (!hasPattern) {
-      newNamesNoPattern.push(name);
-      envObj[name] = v.value != null ? String(v.value) : '';
+
+  normalized.forEach((v) => {
+    const encoded = encodeVarNameKey(v.name);
+    nextEnvEntries[`${ENV_ID_PREFIX}${encoded}`] = v.id;
+    nextEnvEntries[`${ENV_NAME_PREFIX}${encoded}`] = v.name;
+    if (v.valuePattern) {
+      nextEnvEntries[`${ENV_PATTERN_PREFIX}${encoded}`] = v.valuePattern;
+    } else {
+      nextEnvEntries[`${ENV_VAR_PREFIX}${encoded}`] = v.value || '';
     }
   });
-  const keysToRemove = prevNamesNoPattern.filter((n) => !newNamesNoPattern.includes(n));
-  const envPath = getEnvPath(rootPath);
-  if (!fs.existsSync(envPath)) fs.writeFileSync(envPath, '# TestBlox variables\n', 'utf8');
-  writeEnvFile(rootPath, envObj, keysToRemove);
-  writeJsonAtomic(p.variables, { variables: normalized });
+
+  writeEnvFile(rootPath, nextEnvEntries, keysToRemove);
   return readVariables(rootPath);
 }
 
@@ -417,7 +517,19 @@ function deletePage(rootPath, pageId) {
   return page;
 }
 
-function listTests(rootPath, pageId = null) {
+function listTests(rootPath, pageOrOptions = null) {
+  const options =
+    pageOrOptions && typeof pageOrOptions === 'object' && !Array.isArray(pageOrOptions)
+      ? pageOrOptions
+      : { pageId: pageOrOptions };
+  const pageId = options.pageId ?? null;
+  const titleQuery = options.titleQuery != null ? String(options.titleQuery).trim().toLowerCase() : '';
+  const typeFilter = options.type != null ? String(options.type).trim().toLowerCase() : '';
+  const limit = Number.isFinite(Number(options.limit)) ? Math.max(0, Number(options.limit)) : null;
+  const offset = Number.isFinite(Number(options.offset)) ? Math.max(0, Number(options.offset)) : 0;
+  const fieldsMode = options.fields != null ? String(options.fields).trim().toLowerCase() : '';
+  const idsOnly = fieldsMode === 'id' || fieldsMode === 'ids' || options.onlyIds === true;
+
   const p = getPaths(rootPath);
   if (!fs.existsSync(p.testsDir)) return [];
   const files = fs.readdirSync(p.testsDir).filter((f) => f.endsWith('.json'));
@@ -431,14 +543,23 @@ function listTests(rootPath, pageId = null) {
   for (const f of files) {
     const test = readJsonSafe(path.join(p.testsDir, f));
     if (!test || test.deleted) continue;
+    const effectiveType = inferTestTypeFromSteps(test);
+    if (typeFilter && effectiveType !== typeFilter) continue;
+    if (titleQuery && !String(test.title || '').toLowerCase().includes(titleQuery)) continue;
+    const normalized = { ...test, type: effectiveType };
     if (pageId == null) {
-      tests.push(test);
+      tests.push(normalized);
     } else {
       const stepElementIds = (test.steps || []).map((s) => s.webElementId).filter(Boolean);
-      if (stepElementIds.some((id) => pageWebElementIds.includes(id))) tests.push(test);
+      if (stepElementIds.some((id) => pageWebElementIds.includes(id))) tests.push(normalized);
     }
   }
-  return tests;
+  const sliced =
+    !offset && (limit == null || limit <= 0)
+      ? tests
+      : (limit != null && limit >= 0 ? tests.slice(offset, offset + limit) : tests.slice(offset));
+  if (!idsOnly) return sliced;
+  return sliced.map((t) => ({ id: t.id }));
 }
 
 function readTest(rootPath, testId) {

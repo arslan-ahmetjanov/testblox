@@ -11,15 +11,16 @@ function registerLlmIpc() {
     const buildConfig = readBuildConfig();
     if (workspacePath) {
       try {
-        require('dotenv').config({ path: path.join(workspacePath, '.env') });
+        require('dotenv').config({
+          path: path.join(workspacePath, '.env'),
+          override: true,
+        });
       } catch (_) {}
     }
-    const globalConfig = llmConfig.getGlobalConfig(userData);
     const workspaceConfig = workspacePath ? llmConfig.getWorkspaceConfig(workspacePath) : null;
     const effectiveDetails = llmConfig.getEffectiveConfigDetails(userData, workspacePath);
     const effective = effectiveDetails.values;
     return {
-      global: { ...globalConfig, apiKey: globalConfig.apiKey ? '***' : null },
       workspace: workspaceConfig ? { ...workspaceConfig, apiKey: workspaceConfig.apiKey ? '***' : null } : null,
       effective: { ...effective, apiKey: effective.apiKey ? '***' : null },
       sources: effectiveDetails.sources,
@@ -29,20 +30,11 @@ function registerLlmIpc() {
     };
   });
 
-  ipcMain.handle('llm:saveConfig', (_, { scope, apiKey, modelName }) => {
-    const userData = require('electron').app.getPath('userData');
-    if (scope === 'workspace') {
-      const workspacePath = getCurrentPath();
-      if (!workspacePath) throw new Error('No workspace opened');
-      const current = llmConfig.getWorkspaceConfig(workspacePath) || {};
-      return llmConfig.saveWorkspaceConfig(workspacePath, {
-        apiKey: apiKey === '***' ? current.apiKey : apiKey,
-        modelName: modelName ?? current.modelName,
-        apiBaseUrl: current.apiBaseUrl,
-      });
-    }
-    const current = llmConfig.getGlobalConfig(userData);
-    return llmConfig.saveGlobalConfig(userData, {
+  ipcMain.handle('llm:saveConfig', (_, { apiKey, modelName }) => {
+    const workspacePath = getCurrentPath();
+    if (!workspacePath) throw new Error('No workspace opened');
+    const current = llmConfig.getWorkspaceConfig(workspacePath) || {};
+    return llmConfig.saveWorkspaceConfig(workspacePath, {
       apiKey: apiKey === '***' ? current.apiKey : apiKey,
       modelName: modelName ?? current.modelName,
       apiBaseUrl: current.apiBaseUrl,

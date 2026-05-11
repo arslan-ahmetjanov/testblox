@@ -8,20 +8,13 @@ import {
   Paper,
   TextField,
   IconButton,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   Collapse,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import {
-  buildApiStepEditorInitial,
-  getApiRequestDetailPreview,
   getStepApiAction,
   getStepSummaryLine,
   isStepApi,
@@ -42,7 +35,6 @@ export default function TestStepEditorCards({
   onApiStepChange,
   onRemoveStep,
   onMoveStep,
-  onOpenApiEditor,
 }) {
   const [apiExpanded, setApiExpanded] = useState(() => ({}));
   const [uiExpanded, setUiExpanded] = useState(() => ({}));
@@ -106,9 +98,16 @@ export default function TestStepEditorCards({
           const apiAction = getStepApiAction(step);
           const endpointId = step.endpointId ?? step.targetId ?? '';
           const stepBaseId = step.baseId ?? '';
-          const isRequest = apiAction === 'request';
           const expanded = apiExpanded[index] ?? false;
           const summary = getStepSummaryLine(step, summaryCtx);
+          const selectedApiBase = apiBases.find((b) => b.id === stepBaseId) || null;
+          const selectedEndpoint = endpoints.find((ep) => ep.id === endpointId) || null;
+          const apiActionOptions = [
+            { id: 'request', name: 'Request' },
+            { id: 'assertStatus', name: 'Assert status' },
+            { id: 'assertBody', name: 'Assert body' },
+          ];
+          const selectedApiAction = apiActionOptions.find((opt) => opt.id === apiAction) || apiActionOptions[0];
 
           return (
             <Paper
@@ -123,7 +122,7 @@ export default function TestStepEditorCards({
             >
               <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
                 <Box sx={{ flex: 1, minWidth: 200 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: isRequest ? 1 : 0 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: expanded ? 1 : 0 }}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
                       Step {index + 1}
                     </Typography>
@@ -131,16 +130,14 @@ export default function TestStepEditorCards({
                     <Typography variant="body2" sx={{ color: 'text.primary', flex: 1, minWidth: 160 }}>
                       {summary}
                     </Typography>
-                    {isRequest && (
-                      <Button
-                        size="small"
-                        endIcon={<ExpandMoreIcon sx={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />}
-                        onClick={() => toggleApiDetails(index)}
-                        sx={{ color: 'primary.main', textTransform: 'none' }}
-                      >
-                        {expanded ? 'Hide details' : 'Edit request'}
-                      </Button>
-                    )}
+                    <Button
+                      size="small"
+                      endIcon={<ExpandMoreIcon sx={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />}
+                      onClick={() => toggleApiDetails(index)}
+                      sx={{ color: 'primary.main', textTransform: 'none' }}
+                    >
+                      {expanded ? 'Hide details' : 'Edit step'}
+                    </Button>
                     <IconButton size="small" onClick={() => onMoveStep(index, -1)} sx={{ color: 'text.secondary' }}>
                       <ArrowUpwardIcon fontSize="small" />
                     </IconButton>
@@ -152,24 +149,87 @@ export default function TestStepEditorCards({
                     </IconButton>
                   </Box>
 
-                  {!isRequest && (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center', mt: 1 }}>
-                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                        Target: previous response
-                      </Typography>
-                      <FormControl size="small" sx={{ minWidth: 140 }}>
-                        <InputLabel sx={{ color: 'text.secondary' }}>Action</InputLabel>
-                        <Select
-                          value={apiAction}
-                          onChange={(e) => onApiStepChange(index, 'actionId', e.target.value)}
-                          label="Action"
-                          sx={{ color: 'text.primary' }}
-                        >
-                          <MenuItem value="request">Request</MenuItem>
-                          <MenuItem value="assertStatus">Assert status</MenuItem>
-                          <MenuItem value="assertBody">Assert body</MenuItem>
-                        </Select>
-                      </FormControl>
+                  <Collapse in={expanded} timeout="auto" unmountOnExit={false}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pt: 1 }}>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'flex-start' }}>
+                        <Autocomplete
+                          size="small"
+                          options={apiBases}
+                          value={selectedApiBase}
+                          onChange={(_, option) => onApiStepChange(index, 'baseId', option?.id || null)}
+                          getOptionLabel={(option) => option?.title || option?.baseUrl || option?.id || ''}
+                          isOptionEqualToValue={(option, value) => option.id === value.id}
+                          filterOptions={(options, state) => {
+                            const query = state.inputValue.trim().toLowerCase();
+                            if (!query) return options;
+                            return options.filter((option) => {
+                              const title = (option.title || '').toLowerCase();
+                              const baseUrl = (option.baseUrl || '').toLowerCase();
+                              return title.includes(query) || baseUrl.includes(query);
+                            });
+                          }}
+                          noOptionsText="No API bases"
+                          sx={{ minWidth: variant === 'shared' ? 180 : 200 }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              label="API Base"
+                              placeholder="Search API base..."
+                              sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
+                            />
+                          )}
+                        />
+                        <Autocomplete
+                          size="small"
+                          options={endpoints}
+                          value={selectedEndpoint}
+                          onChange={(_, option) => onApiStepChange(index, 'endpointId', option?.id || '')}
+                          getOptionLabel={(option) => (option ? `${option.method} ${option.path}` : '')}
+                          isOptionEqualToValue={(option, value) => option.id === value.id}
+                          filterOptions={(options, state) => {
+                            const query = state.inputValue.trim().toLowerCase();
+                            if (!query) return options;
+                            return options.filter((option) => {
+                              const methodPath = `${option.method || ''} ${option.path || ''}`.toLowerCase();
+                              const summary = (option.summary || '').toLowerCase();
+                              return methodPath.includes(query) || summary.includes(query);
+                            });
+                          }}
+                          noOptionsText="No endpoints"
+                          sx={{ minWidth: variant === 'shared' ? 200 : 220 }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              label={variant === 'shared' ? 'Endpoint' : 'Target (Endpoint)'}
+                              placeholder="Search endpoint..."
+                              sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
+                            />
+                          )}
+                        />
+                        <Autocomplete
+                          size="small"
+                          options={apiActionOptions}
+                          value={selectedApiAction}
+                          onChange={(_, option) => onApiStepChange(index, 'actionId', option?.id || 'request')}
+                          getOptionLabel={(option) => option?.name || ''}
+                          isOptionEqualToValue={(option, value) => option.id === value.id}
+                          noOptionsText="No actions"
+                          sx={{ minWidth: 180 }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              label="Action"
+                              placeholder="Search action..."
+                              sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
+                            />
+                          )}
+                        />
+                      </Box>
+                      {apiAction !== 'request' && (
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          Target: previous response
+                        </Typography>
+                      )}
                       {apiAction === 'assertStatus' && (
                         <TextField
                           size="small"
@@ -180,7 +240,7 @@ export default function TestStepEditorCards({
                         />
                       )}
                       {apiAction === 'assertBody' && (
-                        <>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                           <TextField
                             size="small"
                             label="JSON path"
@@ -196,106 +256,8 @@ export default function TestStepEditorCards({
                             onChange={(e) => onApiStepChange(index, 'value', e.target.value)}
                             sx={{ minWidth: 120, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
                           />
-                        </>
-                      )}
-                    </Box>
-                  )}
-
-                  <Collapse in={isRequest && expanded} timeout="auto" unmountOnExit={false}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pt: 1 }}>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'flex-start' }}>
-                        <FormControl size="small" sx={{ minWidth: variant === 'shared' ? 180 : 200 }}>
-                          <InputLabel sx={{ color: 'text.secondary' }}>Base</InputLabel>
-                          <Select
-                            value={stepBaseId}
-                            onChange={(e) => onApiStepChange(index, 'baseId', e.target.value || null)}
-                            label="Base"
-                            sx={{ color: 'text.primary' }}
-                          >
-                            <MenuItem value="">— Use endpoint default —</MenuItem>
-                            {apiBases.map((b) => (
-                              <MenuItem key={b.id} value={b.id}>
-                                {b.title || b.baseUrl || b.id}
-                              </MenuItem>
-                            ))}
-                            {apiBases.length === 0 && (
-                              <MenuItem value="" disabled>
-                                — No bases —
-                              </MenuItem>
-                            )}
-                          </Select>
-                        </FormControl>
-                        <FormControl size="small" sx={{ minWidth: variant === 'shared' ? 200 : 220 }}>
-                          <InputLabel sx={{ color: 'text.secondary' }}>
-                            {variant === 'shared' ? 'Endpoint' : 'Target (Endpoint)'}
-                          </InputLabel>
-                          <Select
-                            value={endpointId}
-                            onChange={(e) => onApiStepChange(index, 'endpointId', e.target.value)}
-                            label={variant === 'shared' ? 'Endpoint' : 'Target (Endpoint)'}
-                            sx={{ color: 'text.primary' }}
-                          >
-                            {endpoints.map((ep) => (
-                              <MenuItem key={ep.id} value={ep.id}>
-                                {ep.method} {ep.path}
-                              </MenuItem>
-                            ))}
-                            {endpoints.length === 0 && <MenuItem value="">— No endpoints —</MenuItem>}
-                          </Select>
-                        </FormControl>
-                        <FormControl size="small" sx={{ minWidth: 140 }}>
-                          <InputLabel sx={{ color: 'text.secondary' }}>Action</InputLabel>
-                          <Select
-                            value={apiAction}
-                            onChange={(e) => onApiStepChange(index, 'actionId', e.target.value)}
-                            label="Action"
-                            sx={{ color: 'text.primary' }}
-                          >
-                            <MenuItem value="request">Request</MenuItem>
-                            <MenuItem value="assertStatus">Assert status</MenuItem>
-                            <MenuItem value="assertBody">Assert body</MenuItem>
-                          </Select>
-                        </FormControl>
-                      </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
-                        <Box sx={{ flex: 1, minWidth: 120 }}>
-                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
-                            Request preview
-                          </Typography>
-                          <Box
-                            sx={{
-                              fontFamily: 'monospace',
-                              fontSize: '0.75rem',
-                              color: 'text.secondary',
-                              whiteSpace: 'pre-wrap',
-                              wordBreak: 'break-all',
-                              maxHeight: 48,
-                              overflow: 'hidden',
-                              border: '1px solid',
-                              borderColor: 'divider',
-                              borderRadius: 1,
-                              p: 1,
-                              bgcolor: 'action.hover',
-                            }}
-                          >
-                            {getApiRequestDetailPreview(
-                              endpoints.find((ep) => ep.id === endpointId),
-                              step
-                            )}
-                          </Box>
                         </Box>
-                        <Button
-                          size="small"
-                          startIcon={<OpenInNewIcon />}
-                          onClick={() => {
-                            const endpoint = endpoints.find((ep) => ep.id === endpointId);
-                            onOpenApiEditor(index, buildApiStepEditorInitial(endpoint, step, apiBases));
-                          }}
-                          sx={{ color: 'primary.main', alignSelf: 'flex-end' }}
-                        >
-                          Open request editor
-                        </Button>
-                      </Box>
+                      )}
                     </Box>
                   </Collapse>
                 </Box>
@@ -355,22 +317,33 @@ export default function TestStepEditorCards({
 
                 <Collapse in={uiDetailsOpen} timeout="auto" unmountOnExit={false}>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'flex-start', pt: 0.5 }}>
-                    <FormControl size="small" sx={{ minWidth: 200 }}>
-                      <InputLabel sx={{ color: 'text.secondary' }}>Page</InputLabel>
-                      <Select
-                        value={resolvedPageId || ''}
-                        onChange={(e) => onStepChange(index, 'pageId', e.target.value)}
-                        label="Page"
-                        sx={{ color: 'text.primary' }}
-                      >
-                        {pages.map((p) => (
-                          <MenuItem key={p.id} value={p.id}>
-                            {p.title || p.url || p.id}
-                          </MenuItem>
-                        ))}
-                        {pages.length === 0 && <MenuItem value="">— No pages —</MenuItem>}
-                      </Select>
-                    </FormControl>
+                    <Autocomplete
+                      size="small"
+                      options={pages}
+                      value={pages.find((p) => p.id === resolvedPageId) || null}
+                      onChange={(_, option) => onStepChange(index, 'pageId', option?.id || '')}
+                      getOptionLabel={(option) => option?.title || option?.url || option?.id || ''}
+                      isOptionEqualToValue={(option, value) => option.id === value.id}
+                      filterOptions={(options, state) => {
+                        const query = state.inputValue.trim().toLowerCase();
+                        if (!query) return options;
+                        return options.filter((option) => {
+                          const title = (option.title || '').toLowerCase();
+                          const url = (option.url || '').toLowerCase();
+                          return title.includes(query) || url.includes(query);
+                        });
+                      }}
+                      noOptionsText="No pages"
+                      sx={{ minWidth: 200 }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Page"
+                          placeholder="Search page..."
+                          sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
+                        />
+                      )}
+                    />
                     <Autocomplete
                       size="small"
                       options={elementsOnPage}

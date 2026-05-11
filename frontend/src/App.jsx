@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
-import { CssBaseline } from '@mui/material';
+import { Box, CircularProgress, CssBaseline } from '@mui/material';
 import MainLayout from './components/MainLayout';
+import WindowTitleBar from './components/WindowTitleBar';
 import WelcomeHeader from './screens/WelcomeHeader';
 import WelcomeSidebar from './screens/WelcomeSidebar';
 import WelcomeOverview from './screens/WelcomeOverview';
-import WorkspaceView from './screens/WorkspaceView';
+
+// WorkspaceView pulls curlconverter + web-tree-sitter (WASM). Loading it on the welcome
+// route prevented React from mounting when that graph failed or stalled in Electron.
+const WorkspaceView = lazy(() => import('./screens/WorkspaceView'));
 
 const THEME_STORAGE_KEY = 'testblox-theme';
 
@@ -164,6 +168,7 @@ export default function App() {
       <ThemeProvider theme={currentTheme}>
         <CssBaseline />
         <MainLayout
+          topBar={<WindowTitleBar />}
           header={<WelcomeHeader themeMode={themeMode} onToggleTheme={handleToggleTheme} />}
           sidebar={
             <WelcomeSidebar
@@ -201,19 +206,35 @@ export default function App() {
   return (
     <ThemeProvider theme={currentTheme}>
       <CssBaseline />
-      <WorkspaceView
-        workspacePath={workspacePath}
-        workspace={workspace}
-        pages={pages}
-        themeMode={themeMode}
-        onToggleTheme={handleToggleTheme}
-        onRefresh={() => {
-          window.electronAPI.getWorkspaceMeta().then(setWorkspace);
-          window.electronAPI.listPages().then(setPages);
-        }}
-        onOpenFolder={handleOpenFolder}
-        onCloseWorkspace={handleCloseWorkspace}
-      />
+      <Suspense
+        fallback={
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '100vh',
+              bgcolor: 'background.default',
+            }}
+          >
+            <CircularProgress />
+          </Box>
+        }
+      >
+        <WorkspaceView
+          workspacePath={workspacePath}
+          workspace={workspace}
+          pages={pages}
+          themeMode={themeMode}
+          onToggleTheme={handleToggleTheme}
+          onRefresh={() => {
+            window.electronAPI.getWorkspaceMeta().then(setWorkspace);
+            window.electronAPI.listPages().then(setPages);
+          }}
+          onOpenFolder={handleOpenFolder}
+          onCloseWorkspace={handleCloseWorkspace}
+        />
+      </Suspense>
     </ThemeProvider>
   );
 }

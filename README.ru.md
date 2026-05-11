@@ -54,8 +54,8 @@
 
 1. Перейдите в [Releases](https://github.com/arslan-ahmetjanov/testblox/releases).
 2. Скачайте:
-   - **TestBlox Setup 1.0.0.exe** — установщик (рекомендуется), или  
-   - **TestBlox 1.0.0.exe** — портативная версия, без установки.
+   - **TestBlox Setup 1.1.0.exe** — установщик (рекомендуется), или  
+   - **TestBlox 1.1.0.exe** — портативная версия, без установки.
 3. Запустите файл. Портативную версию можно запускать из любой папки.
 
 ### Вариант 2: Сборка из исходников
@@ -67,7 +67,7 @@ npm ci
 npm run build
 ```
 
-Результат: `dist/TestBlox Setup 1.0.0.exe` и `dist/TestBlox 1.0.0.exe` (портативная).
+Результат: `dist/TestBlox Setup 1.1.0.exe` и `dist/TestBlox 1.1.0.exe` (портативная).
 
 ---
 

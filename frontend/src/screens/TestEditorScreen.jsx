@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Button,
@@ -8,10 +8,9 @@ import {
   List,
   ListItem,
   ListItemText,
-  Select,
-  MenuItem,
   LinearProgress,
   Alert,
+  Autocomplete,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
@@ -21,12 +20,18 @@ import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
-import ApiRequestEditor from '../components/ApiRequestEditor';
 import SectionLabel from '../components/SectionLabel';
 import TestStepEditorCards from '../components/TestStepEditorCards';
-import { buildApiStepEditorInitial, isStepApi } from '../utils/testSteps';
+import { isStepApi } from '../utils/testSteps';
 
-export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun, onViewReport }) {
+export default function TestEditorScreen({
+  testId,
+  onBack,
+  onRefresh,
+  onOpenRun,
+  onViewReport,
+  onOpenSharedSteps,
+}) {
   const [test, setTest] = useState(null);
   const [page, setPage] = useState(null);
   const [allPages, setAllPages] = useState([]);
@@ -42,10 +47,10 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
   const [runResultModalOpen, setRunResultModalOpen] = useState(false);
   const [runReport, setRunReport] = useState(null);
   const [runError, setRunError] = useState(null);
-  const [apiEditorOpen, setApiEditorOpen] = useState(false);
-  const [apiEditorStepIndex, setApiEditorStepIndex] = useState(null);
-  const [apiEditorInitial, setApiEditorInitial] = useState(null);
   const [savedStepsSignature, setSavedStepsSignature] = useState(null);
+  const [sharedStepPickKey, setSharedStepPickKey] = useState(0);
+  const sharedStepAcToolbarRef = useRef(null);
+  const sharedStepAcEmptyRef = useRef(null);
 
   useEffect(() => {
     if (!testId || !window.electronAPI) return;
@@ -150,13 +155,8 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
     setTest((t) => (t ? { ...t, steps: [...(t.steps || []), newStep] } : null));
   };
 
-  const handleAddApiStep = (action) => {
-    const newStep =
-      action === 'request'
-        ? { type: 'api', actionId: 'request', endpointId: endpoints[0]?.id || '', body: '{}' }
-        : action === 'assertStatus'
-          ? { type: 'api', actionId: 'assertStatus', value: '200' }
-          : { type: 'api', actionId: 'assertBody', jsonPath: '', value: '' };
+  const handleAddApiStep = () => {
+    const newStep = { type: 'api', actionId: 'request', endpointId: endpoints[0]?.id || '', body: '{}' };
     setTest((t) => (t ? { ...t, steps: [...(t.steps || []), newStep] } : null));
   };
 
@@ -164,6 +164,56 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
     if (!sharedStepId) return;
     setTest((t) => (t ? { ...t, steps: [...(t.steps || []), { sharedStepId }] } : null));
   };
+
+  const focusSharedStepSearch = () => {
+    const root = sharedStepAcToolbarRef.current || sharedStepAcEmptyRef.current;
+    root?.querySelector?.('input')?.focus();
+  };
+
+  const handleAddSharedStepToolbar = () => {
+    if (sharedSteps.length === 0) {
+      onOpenSharedSteps?.();
+      return;
+    }
+    focusSharedStepSearch();
+  };
+
+  const sharedStepAutocomplete = (boxRef) => (
+    <Box ref={boxRef} sx={{ minWidth: 220, maxWidth: 400, flex: '1 1 220px' }}>
+      <Autocomplete
+        key={sharedStepPickKey}
+        fullWidth
+        size="small"
+        options={sharedSteps}
+        value={null}
+        onChange={(_, option) => {
+          if (option?.id) {
+            handleAddSharedStep(option.id);
+            setSharedStepPickKey((k) => k + 1);
+          }
+        }}
+        getOptionLabel={(o) => o?.title || o?.id || ''}
+        filterOptions={(options, state) => {
+          const q = state.inputValue.trim().toLowerCase();
+          if (!q) return options;
+          return options.filter((o) => {
+            const title = (o.title || '').toLowerCase();
+            const id = (o.id || '').toLowerCase();
+            return title.includes(q) || id.includes(q);
+          });
+        }}
+        noOptionsText="No matching shared steps"
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Insert shared step"
+            placeholder="Search shared step…"
+            sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
+          />
+        )}
+      />
+    </Box>
+  );
 
   const handleStepChange = (index, field, value) => {
     setTest((t) => {
@@ -200,33 +250,6 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
       s[index] = { ...s[index], [field]: value };
       return { ...t, steps: s };
     });
-  };
-
-  const handleOpenApiEditor = (index, initial) => {
-    setApiEditorStepIndex(index);
-    setApiEditorInitial(initial);
-    setApiEditorOpen(true);
-  };
-
-  const handleSaveApiEditor = async ({ stepPatch, endpointPatch }) => {
-    if (apiEditorStepIndex == null || !test?.steps?.[apiEditorStepIndex]) return;
-    const step = test.steps[apiEditorStepIndex];
-    if (endpointPatch && step.endpointId) {
-      try {
-        await window.electronAPI.updateEndpoint(step.endpointId, endpointPatch);
-        window.electronAPI.listEndpoints().then(setEndpoints).catch(() => {});
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    setTest((t) => {
-      if (!t || apiEditorStepIndex == null) return t;
-      const s = [...(t.steps || [])];
-      if (!s[apiEditorStepIndex]) return t;
-      s[apiEditorStepIndex] = { ...s[apiEditorStepIndex], ...(stepPatch || {}) };
-      return { ...t, steps: s };
-    });
-    setApiEditorOpen(false);
   };
 
   const handleRemoveStep = (index) => {
@@ -370,15 +393,6 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
         </DialogActions>
       </Dialog>
 
-      <ApiRequestEditor
-        variant="step"
-        open={apiEditorOpen && !!apiEditorInitial}
-        onClose={() => setApiEditorOpen(false)}
-        dialogTitle="Edit API request"
-        initial={apiEditorInitial}
-        onSaveStep={handleSaveApiEditor}
-      />
-
       {!isApiTest && <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>Page: {page?.title || test.pageId}</Typography>}
       {stepsDirty && (
         <Alert severity="warning" sx={{ mb: 2 }}>
@@ -388,33 +402,17 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
       <Paper sx={{ p: 2, mb: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
           <SectionLabel sx={{ mb: 0 }}>Steps</SectionLabel>
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
             <Button size="small" startIcon={<AddIcon />} onClick={handleAddUiStep} sx={{ color: 'primary.main' }}>Add UI step</Button>
-            <Select
-              size="small"
-              displayEmpty
-              value=""
-              onChange={(e) => { const v = e.target.value; if (v) handleAddApiStep(v); e.target.value = ''; }}
-              sx={{ minWidth: 160, color: 'text.primary', '.MuiOutlinedInput-notchedOutline': { borderColor: 'divider' } }}
-              renderValue={() => 'Add API step…'}
-            >
-              <MenuItem value="request">Request</MenuItem>
-              <MenuItem value="assertStatus">Assert status</MenuItem>
-              <MenuItem value="assertBody">Assert body</MenuItem>
-            </Select>
-            {sharedSteps.length > 0 && (
-              <Select
-                size="small"
-                displayEmpty
-                value=""
-                onChange={(e) => { handleAddSharedStep(e.target.value); e.target.value = ''; }}
-                sx={{ minWidth: 160, color: 'text.primary', '.MuiOutlinedInput-notchedOutline': { borderColor: 'divider' } }}
-              >
-                <MenuItem value="" disabled>Add shared step…</MenuItem>
-                {sharedSteps.map((s) => (
-                  <MenuItem key={s.id} value={s.id}>{s.title}</MenuItem>
-                ))}
-              </Select>
+            <Button size="small" startIcon={<AddIcon />} onClick={handleAddApiStep} sx={{ color: 'primary.main' }}>Add API step</Button>
+            <Button size="small" startIcon={<AddIcon />} onClick={handleAddSharedStepToolbar} sx={{ color: 'primary.main' }}>Add shared step</Button>
+            {sharedSteps.length > 0 ? (
+              sharedStepAutocomplete(sharedStepAcToolbarRef)
+            ) : (
+              <Typography variant="caption" sx={{ color: 'text.secondary', alignSelf: 'center' }}>
+                No shared steps in workspace.
+                {onOpenSharedSteps ? ' Use Add shared step to open Shared Steps.' : ''}
+              </Typography>
             )}
             <Button size="small" variant={stepsDirty ? 'contained' : 'outlined'} color="primary" onClick={handleSaveSteps} disabled={saving}>Save steps</Button>
           </Box>
@@ -426,7 +424,17 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
             </Typography>
             <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
               <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={handleAddUiStep} sx={{ bgcolor: 'success.main', color: 'background.default' }}>Add UI step</Button>
-              <Button size="small" variant="outlined" onClick={() => handleAddApiStep('request')} sx={{ color: 'primary.main' }}>Add API request</Button>
+              <Button size="small" variant="outlined" onClick={handleAddApiStep} sx={{ color: 'primary.main' }}>Add API step</Button>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap', alignItems: 'center', mt: 2 }}>
+              <Button size="small" startIcon={<AddIcon />} onClick={handleAddSharedStepToolbar} sx={{ color: 'primary.main' }}>Add shared step</Button>
+              {sharedSteps.length > 0 ? (
+                sharedStepAutocomplete(sharedStepAcEmptyRef)
+              ) : (
+                <Typography variant="caption" sx={{ color: 'text.secondary', alignSelf: 'center' }}>
+                  No shared steps yet. Use Add shared step in this row to open Shared Steps.
+                </Typography>
+              )}
             </Box>
           </Box>
         )}
@@ -446,7 +454,6 @@ export default function TestEditorScreen({ testId, onBack, onRefresh, onOpenRun,
             onApiStepChange={handleApiStepChange}
             onRemoveStep={handleRemoveStep}
             onMoveStep={handleMoveStep}
-            onOpenApiEditor={handleOpenApiEditor}
           />
         )}
       </Paper>

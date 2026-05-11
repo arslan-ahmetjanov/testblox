@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Button,
@@ -14,11 +14,6 @@ import {
   MenuItem,
   Snackbar,
   Alert,
-  Autocomplete,
-  Chip,
-  FormControl,
-  InputLabel,
-  Select,
   List,
   ListItem,
   ListItemButton,
@@ -27,9 +22,6 @@ import {
 } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import CallReceivedIcon from '@mui/icons-material/CallReceived';
-import CallMadeIcon from '@mui/icons-material/CallMade';
-import SaveIcon from '@mui/icons-material/Save';
 import AddIcon from '@mui/icons-material/Add';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
@@ -59,33 +51,29 @@ import VariablesScreen from './VariablesScreen';
 import ApiBasesListScreen from './ApiBasesListScreen';
 import ApiBaseScreen from './ApiBaseScreen';
 import SharedStepsScreen from './SharedStepsScreen';
+import GitScreen from './GitScreen';
+import AiGenerateScreen from './AiGenerateScreen';
 import MainLayout from '../components/MainLayout';
 import SectionLabel from '../components/SectionLabel';
+import WindowTitleBar from '../components/WindowTitleBar';
+
+/** Shown when a key exists but is not sent to the renderer (IPC uses `***`). Password field shows bullets. */
+const LLM_API_KEY_MASK_DISPLAY = '********';
+
+function isLlmApiKeySaveUnchanged(value) {
+  const v = value != null ? String(value).trim() : '';
+  return v === '' || v === '***' || v === LLM_API_KEY_MASK_DISPLAY;
+}
 
 export default function WorkspaceView({ workspacePath, workspace, pages, themeMode, onToggleTheme, onRefresh, onOpenFolder, onCloseWorkspace }) {
-  const [view, setView] = useState('list'); // 'list' | 'page' | 'test' | 'run' | 'report' | 'variables' | 'apiBases' | 'apiBase' | 'sharedSteps'
+  const [view, setView] = useState('list'); // 'list' | 'page' | 'test' | 'run' | 'report' | 'variables' | 'apiBases' | 'apiBase' | 'sharedSteps' | 'git' | 'ai'
   const [selectedPageId, setSelectedPageId] = useState(null);
   const [selectedTestId, setSelectedTestId] = useState(null);
   const [selectedBaseId, setSelectedBaseId] = useState(null);
   const [reportId, setReportId] = useState(null);
-  const [gitRoot, setGitRoot] = useState(null);
-  const [branch, setBranch] = useState(null);
-  const [status, setStatus] = useState(null);
-  const [branches, setBranches] = useState([]);
-  const [remoteBranches, setRemoteBranches] = useState([]);
-  const [remotes, setRemotes] = useState([]);
-  const [remotesOpen, setRemotesOpen] = useState(false);
-  const [newRemoteName, setNewRemoteName] = useState('');
-  const [newRemoteUrl, setNewRemoteUrl] = useState('');
-  const [branchSelectOpen, setBranchSelectOpen] = useState(false);
-  const [tests, setTests] = useState([]);
-  const [commitOpen, setCommitOpen] = useState(false);
-  const [commitMessage, setCommitMessage] = useState('');
-  const [gitBusy, setGitBusy] = useState(false);
-  const [initGitBusy, setInitGitBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [llmConfig, setLlmConfig] = useState({ global: {}, effective: {}, isValid: false });
-  const [llmForm, setLlmForm] = useState({ apiKey: '', modelName: '', apiBaseUrl: '', scope: 'global' });
+  const [llmForm, setLlmForm] = useState({ apiKey: '', modelName: '', apiBaseUrl: '' });
   const [llmSaving, setLlmSaving] = useState(false);
   const [browserForm, setBrowserForm] = useState({ executablePath: '' });
   const [addPageOpen, setAddPageOpen] = useState(false);
@@ -96,14 +84,6 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
   const [newTestTitle, setNewTestTitle] = useState('');
   const [newTestType, setNewTestType] = useState('hybrid');
   const [newTestSaving, setNewTestSaving] = useState(false);
-  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
-  const [generatePageIds, setGeneratePageIds] = useState([]);
-  const [generateBaseIds, setGenerateBaseIds] = useState([]);
-  const [generatePrompt, setGeneratePrompt] = useState('');
-  const [generateApiBases, setGenerateApiBases] = useState([]);
-  const [generateBusy, setGenerateBusy] = useState(false);
-  const [generateError, setGenerateError] = useState(null);
-  const [generateResult, setGenerateResult] = useState(null);
   const [workspaceTitleOpen, setWorkspaceTitleOpen] = useState(false);
   const [workspaceTitleValue, setWorkspaceTitleValue] = useState('');
   const [workspaceTitleSaving, setWorkspaceTitleSaving] = useState(false);
@@ -122,178 +102,10 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
 
   const llmSourceLabel = (source) => {
     if (source === 'env') return 'Environment (.env / process env)';
-    if (source === 'workspace') return 'Workspace config';
-    if (source === 'global') return 'Global config';
+    if (source === 'workspace') return 'Workspace .env';
     if (source === 'buildConfig') return 'Build config';
     return 'Default';
   };
-
-  const loadGit = async () => {
-    if (!window.electronAPI) return;
-    const root = await window.electronAPI.gitRootPath(workspacePath);
-    setGitRoot(root);
-    if (root) {
-      const [b, s, branchList, remotesList] = await Promise.all([
-        window.electronAPI.gitCurrentBranch(root),
-        window.electronAPI.gitStatus(root),
-        window.electronAPI.gitGetBranches(root).catch(() => []),
-        window.electronAPI.gitGetRemotes(root).catch(() => []),
-      ]);
-      setBranch(b);
-      setStatus(s);
-      setBranches(branchList);
-      setRemotes(remotesList);
-    }
-  };
-
-  useEffect(() => {
-    loadGit();
-  }, [workspacePath]);
-
-  useEffect(() => {
-    if (branchSelectOpen && gitRoot && remoteBranches.length === 0) {
-      window.electronAPI?.gitGetRemoteBranches(gitRoot, 'origin').then(setRemoteBranches).catch(() => {});
-    }
-  }, [branchSelectOpen, gitRoot]);
-
-  useEffect(() => {
-    if (!workspacePath) return;
-    window.electronAPI.listTests(null).then(setTests).catch(() => setTests([]));
-  }, [workspacePath, pages]);
-
-  const handlePull = async () => {
-    if (!gitRoot) return;
-    setGitBusy(true);
-    try {
-      await window.electronAPI.gitPull(gitRoot);
-      await loadGit();
-      onRefresh();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setGitBusy(false);
-    }
-  };
-
-  const handlePush = async () => {
-    if (!gitRoot) return;
-    setGitBusy(true);
-    try {
-      await window.electronAPI.gitPush(gitRoot);
-      await loadGit();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setGitBusy(false);
-    }
-  };
-
-  const handleFetch = async () => {
-    if (!gitRoot) return;
-    setGitBusy(true);
-    try {
-      await window.electronAPI.gitFetch(gitRoot, 'origin');
-      const remoteList = await window.electronAPI.gitGetRemoteBranches(gitRoot, 'origin').catch(() => []);
-      setRemoteBranches(remoteList);
-      await loadGit();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setGitBusy(false);
-    }
-  };
-
-  const handleBranchSelect = async (targetBranch, isRemote = false) => {
-    if (!gitRoot || targetBranch === branch) return;
-    setBranchSelectOpen(false);
-    setGitBusy(true);
-    try {
-      if (isRemote) {
-        await window.electronAPI.gitCheckoutRemoteBranch(gitRoot, 'origin', targetBranch, 'branch-checkout');
-      } else {
-        await window.electronAPI.gitCheckoutBranch(gitRoot, targetBranch);
-      }
-      await loadGit();
-      onRefresh?.();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setGitBusy(false);
-    }
-  };
-
-  const openRemotesDialog = async () => {
-    setRemotesOpen(true);
-    if (gitRoot) {
-      const list = await window.electronAPI.gitGetRemotes(gitRoot).catch(() => []);
-      setRemotes(list);
-    }
-  };
-
-  const handleAddRemote = async () => {
-    if (!gitRoot || !newRemoteName.trim() || !newRemoteUrl.trim()) return;
-    setGitBusy(true);
-    try {
-      await window.electronAPI.gitAddRemote(gitRoot, newRemoteName.trim(), newRemoteUrl.trim());
-      setNewRemoteName('');
-      setNewRemoteUrl('');
-      const list = await window.electronAPI.gitGetRemotes(gitRoot);
-      setRemotes(list);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setGitBusy(false);
-    }
-  };
-
-  const handleRemoveRemote = async (name) => {
-    if (!gitRoot || !name) return;
-    setGitBusy(true);
-    try {
-      await window.electronAPI.gitRemoveRemote(gitRoot, name);
-      const list = await window.electronAPI.gitGetRemotes(gitRoot);
-      setRemotes(list);
-      await loadGit();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setGitBusy(false);
-    }
-  };
-
-  const handleCommit = async () => {
-    if (!gitRoot || !commitMessage.trim()) return;
-    setGitBusy(true);
-    try {
-      await window.electronAPI.gitStage(gitRoot, null);
-      await window.electronAPI.gitCommit(gitRoot, commitMessage.trim());
-      setCommitMessage('');
-      setCommitOpen(false);
-      await loadGit();
-      onRefresh();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setGitBusy(false);
-    }
-  };
-
-  const handleInitGit = async () => {
-    if (!workspacePath || !window.electronAPI) return;
-    setInitGitBusy(true);
-    try {
-      await window.electronAPI.gitInit(workspacePath);
-      await loadGit();
-      setSnackbar({ open: true, message: 'Repository initialized.', severity: 'success' });
-    } catch (e) {
-      console.error(e);
-      setSnackbar({ open: true, message: e?.message || 'Failed to initialize repository.', severity: 'error' });
-    } finally {
-      setInitGitBusy(false);
-    }
-  };
-
-  const hasChanges = status && (status.files?.length > 0 || status.not_added?.length > 0);
 
   const handleAddPageOpen = () => {
     setNewPageTitle('');
@@ -324,42 +136,6 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
     setNewTestTitle('');
     setNewTestType('hybrid');
     setNewTestDialogOpen(true);
-  };
-
-  const openGenerateDialog = () => {
-    setGeneratePageIds([]);
-    setGenerateBaseIds([]);
-    setGeneratePrompt('');
-    setGenerateError(null);
-    setGenerateResult(null);
-    setGenerateDialogOpen(true);
-    window.electronAPI?.listApiBases?.().then(setGenerateApiBases).catch(() => setGenerateApiBases([]));
-  };
-
-  const handleGenerateSubmit = async () => {
-    if (generatePageIds.length === 0 && generateBaseIds.length === 0) {
-      setGenerateError('Select at least one page or API base.');
-      return;
-    }
-    setGenerateBusy(true);
-    setGenerateError(null);
-    try {
-      const endpointIdArrays = await Promise.all(
-        generateBaseIds.map((baseId) => window.electronAPI.listEndpoints(baseId).catch(() => []))
-      );
-      const endpointIds = endpointIdArrays.flat().map((ep) => ep.id);
-      const created = await window.electronAPI.generateFromSelection({
-        pageIds: generatePageIds,
-        endpointIds,
-        customPrompt: generatePrompt.trim() || null,
-      });
-      setGenerateResult(created);
-      onRefresh?.();
-    } catch (e) {
-      setGenerateError(e.message || 'Generation failed');
-    } finally {
-      setGenerateBusy(false);
-    }
   };
 
   const handleNewTestSubmit = async () => {
@@ -405,10 +181,9 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
     const c = await window.electronAPI.llmGetConfig();
     setLlmConfig(c);
     setLlmForm({
-      apiKey: c.effective?.apiKey === '***' ? '' : (c.effective?.apiKey || ''),
+      apiKey: c.effective?.apiKey === '***' ? LLM_API_KEY_MASK_DISPLAY : (c.effective?.apiKey || ''),
       modelName: c.effective?.modelName || '',
       apiBaseUrl: c.effective?.apiBaseUrl || 'https://openrouter.ai/api/v1',
-      scope: 'global',
     });
     const bc = await window.electronAPI.browserGetConfig();
     setBrowserForm({ executablePath: bc.executablePath || '' });
@@ -418,8 +193,7 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
     setLlmSaving(true);
     try {
       await window.electronAPI.llmSaveConfig({
-        scope: llmForm.scope,
-        apiKey: llmForm.apiKey || '***',
+        apiKey: isLlmApiKeySaveUnchanged(llmForm.apiKey) ? '***' : llmForm.apiKey,
         modelName: llmForm.modelName || undefined,
       });
       await window.electronAPI.browserSaveConfig({
@@ -586,71 +360,12 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
       <Button size="small" startIcon={<SettingsIcon />} onClick={openSettings} sx={{ color: 'text.primary' }}>
         Settings
       </Button>
-      {!gitRoot && workspacePath && (
-        <Button
-          size="small"
-          startIcon={<AccountTreeIcon />}
-          onClick={handleInitGit}
-          disabled={initGitBusy}
-          sx={{ color: 'text.primary' }}
-        >
-          Initialize repository
-        </Button>
-      )}
-      {gitRoot && (
-        <>
-          <AccountTreeIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
-          <FormControl size="small" sx={{ minWidth: 100 }} variant="outlined">
-            <Select
-              open={branchSelectOpen}
-              onOpen={() => setBranchSelectOpen(true)}
-              onClose={() => setBranchSelectOpen(false)}
-              value={branch || ''}
-              displayEmpty
-              renderValue={(v) => v || 'main'}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val && val.startsWith('remote/')) handleBranchSelect(val.slice(7), true);
-                else if (val) handleBranchSelect(val, false);
-              }}
-              sx={{ color: 'text.primary', height: 32, fontSize: '0.875rem', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' } }}
-            >
-              {branches.map((b) => (
-                <MenuItem key={b} value={b}>{b}</MenuItem>
-              ))}
-              {remoteBranches.length > 0 && [
-                <MenuItem key="remote-divider" disabled sx={{ opacity: 0.7 }}><Typography variant="caption">origin</Typography></MenuItem>,
-                ...remoteBranches.filter((b) => !branches.includes(b)).map((b) => (
-                  <MenuItem key={`remote-${b}`} value={`remote/${b}`}>{b} (origin)</MenuItem>
-                )),
-              ]}
-            </Select>
-          </FormControl>
-          {status && (status.ahead > 0 || status.behind > 0) && (
-            <Typography variant="caption" sx={{ color: 'success.main' }}>
-              {status.ahead > 0 && `↑${status.ahead}`}
-              {status.behind > 0 && ` ↓${status.behind}`}
-            </Typography>
-          )}
-          <Button size="small" onClick={handleFetch} disabled={gitBusy} sx={{ color: 'text.primary' }} title="Fetch from remote">Fetch</Button>
-          <Button size="small" startIcon={<CallReceivedIcon />} onClick={handlePull} disabled={gitBusy} sx={{ color: 'text.primary' }}>
-            Pull
-          </Button>
-          <Button size="small" startIcon={<CallMadeIcon />} onClick={handlePush} disabled={gitBusy} sx={{ color: 'text.primary' }}>
-            Push
-          </Button>
-          <Button size="small" onClick={openRemotesDialog} sx={{ color: 'text.secondary' }}>Remotes</Button>
-          <Button
-            size="small"
-            startIcon={<SaveIcon />}
-            onClick={() => setCommitOpen(true)}
-            disabled={gitBusy || !hasChanges}
-            sx={{ color: 'text.primary' }}
-          >
-            Commit
-          </Button>
-        </>
-      )}
+      <Button size="small" startIcon={<AccountTreeIcon />} onClick={() => { setView('git'); clearSubSelection(); }} sx={{ color: 'text.primary' }}>
+        Git
+      </Button>
+      <Button size="small" startIcon={<AutoAwesomeIcon />} onClick={() => { setView('ai'); clearSubSelection(); }} sx={{ color: 'text.primary' }}>
+        AI
+      </Button>
     </Paper>
   );
 
@@ -732,6 +447,14 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
           setView('variables');
           clearSubSelection();
         })}
+        {navItem(<AccountTreeIcon fontSize="small" />, 'Git', view === 'git', () => {
+          setView('git');
+          clearSubSelection();
+        })}
+        {navItem(<AutoAwesomeIcon fontSize="small" />, 'AI Generate', view === 'ai', () => {
+          setView('ai');
+          clearSubSelection();
+        })}
       </List>
     </Paper>
   );
@@ -797,6 +520,18 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
                     icon: <AllInclusiveIcon sx={{ color: 'primary.main' }} />,
                     onClick: () => { setView('sharedSteps'); clearSubSelection(); },
                   },
+                  {
+                    title: 'Git',
+                    desc: 'Repository operations in dedicated screen.',
+                    icon: <AccountTreeIcon sx={{ color: 'primary.main' }} />,
+                    onClick: () => { setView('git'); clearSubSelection(); },
+                  },
+                  {
+                    title: 'AI Generate',
+                    desc: 'Generate tests from pages and API bases.',
+                    icon: <AutoAwesomeIcon sx={{ color: 'primary.main' }} />,
+                    onClick: () => { setView('ai'); clearSubSelection(); },
+                  },
                 ].map((card) => (
                   <Paper
                     key={card.title}
@@ -848,6 +583,7 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
               pages={pages}
               onAddPage={handleAddPageOpen}
               onOpenPage={(id) => { setSelectedPageId(id); }}
+              onRefresh={onRefresh}
             />
           )}
           {view === 'page' && selectedPageId && (
@@ -865,11 +601,15 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
               onRefresh={onRefresh}
               onOpenRun={() => setView('run')}
               onViewReport={(id) => { setReportId(id); setView('report'); }}
+              onOpenSharedSteps={() => {
+                setSelectedTestId(null);
+                setSelectedPageId(null);
+                setView('sharedSteps');
+              }}
             />
           )}
           {view === 'tests' && (
             <TestsScreen
-              tests={tests}
               pages={pages}
               onBack={() => setView('list')}
               onRefresh={onRefresh}
@@ -878,10 +618,23 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
           )}
           {view === 'run' && (
             <RunScreen
-              tests={tests}
               onBack={() => setView('list')}
               onRefresh={onRefresh}
               onViewReport={(id) => { setReportId(id); setView('report'); }}
+            />
+          )}
+          {view === 'git' && (
+            <GitScreen
+              workspacePath={workspacePath}
+              onBack={() => setView('list')}
+              onRefresh={onRefresh}
+            />
+          )}
+          {view === 'ai' && (
+            <AiGenerateScreen
+              pages={pages}
+              onBack={() => setView('list')}
+              onRefresh={onRefresh}
             />
           )}
           {view === 'report' && (
@@ -930,7 +683,7 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
 
           <Typography variant="subtitle2" sx={{ color: 'primary.main', mt: 2, mb: 1 }}>LLM (OpenRouter)</Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-            Used for AI test generation. Leave API key empty to keep current value.
+            Used for AI test generation. Leave the field empty or keep the masked value to retain the current key.
           </Typography>
           <TextField
             fullWidth
@@ -938,11 +691,16 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
             type="password"
             value={llmForm.apiKey}
             onChange={(e) => setLlmForm((f) => ({ ...f, apiKey: e.target.value }))}
+            onFocus={(e) => {
+              if (llmForm.apiKey === LLM_API_KEY_MASK_DISPLAY) {
+                e.target.select();
+              }
+            }}
             placeholder="sk-..."
             sx={{ mb: 0.5, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
           />
           <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 2 }}>
-            Or set TESTBLOX_LLM_API_KEY in env (e.g. in .env in workspace root) to avoid storing the key here.
+            Key and model are saved to this workspace root .env as TESTBLOX_LLM_API_KEY and TESTBLOX_LLM_MODEL (keep .env out of git).
           </Typography>
           {llmConfig?.sources?.apiKey === 'env' && (
             <Alert severity="info" sx={{ mb: 2 }}>
@@ -965,12 +723,6 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
             InputProps={{ readOnly: true }}
             sx={{ mb: 2, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
           />
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            Save to: {llmForm.scope === 'global' ? 'Global (all workspaces)' : 'This workspace only'}
-          </Typography>
-          <Button size="small" onClick={() => setLlmForm((f) => ({ ...f, scope: f.scope === 'global' ? 'workspace' : 'global' }))} sx={{ ml: 1, color: 'secondary.main' }}>
-            Switch to {llmForm.scope === 'global' ? 'workspace' : 'global'}
-          </Button>
           <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 1.5 }}>
             Effective sources: API key - {llmSourceLabel(llmConfig?.sources?.apiKey)}, model - {llmSourceLabel(llmConfig?.sources?.modelName)}, base URL - {llmSourceLabel(llmConfig?.sources?.apiBaseUrl)}.
           </Typography>
@@ -979,57 +731,6 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
           <Button onClick={() => setSettingsOpen(false)} sx={{ color: 'text.secondary' }}>Cancel</Button>
           <Button onClick={handleLlmSave} disabled={llmSaving} variant="contained" sx={{ bgcolor: 'success.main', color: 'background.default', '&:hover': { bgcolor: 'success.dark' } }}>
             Save
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={remotesOpen} onClose={() => setRemotesOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: 'background.paper' } }}>
-        <DialogTitle sx={{ color: 'secondary.main' }}>Git remotes</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-            Add or remove remotes. origin is typically used for fetch/pull/push.
-          </Typography>
-          {remotes.length === 0 && (
-            <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2, fontStyle: 'italic' }}>
-              Add origin to push to GitHub or GitLab.
-            </Typography>
-          )}
-          {remotes.map((r) => (
-            <Box key={r.name} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-              <Typography variant="body2" sx={{ color: 'text.primary', minWidth: 80 }}>{r.name}</Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.url}</Typography>
-              <Button size="small" color="error" onClick={() => handleRemoveRemote(r.name)} disabled={gitBusy}>Remove</Button>
-            </Box>
-          ))}
-          <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
-            <TextField size="small" label="Name" value={newRemoteName} onChange={(e) => setNewRemoteName(e.target.value)} placeholder="origin" sx={{ width: 120, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
-            <TextField size="small" label="URL" value={newRemoteUrl} onChange={(e) => setNewRemoteUrl(e.target.value)} placeholder="https://..." sx={{ flex: 1, minWidth: 200, '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
-            <Button size="small" variant="outlined" onClick={handleAddRemote} disabled={gitBusy || !newRemoteName.trim() || !newRemoteUrl.trim()} sx={{ borderColor: 'divider', color: 'text.primary' }}>Add</Button>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setRemotesOpen(false)} sx={{ color: 'text.secondary' }}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={commitOpen} onClose={() => setCommitOpen(false)} PaperProps={{ sx: { bgcolor: 'background.paper' } }}>
-        <DialogTitle sx={{ color: 'secondary.main' }}>Commit changes</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            fullWidth
-            multiline
-            rows={3}
-            placeholder="Commit message"
-            value={commitMessage}
-            onChange={(e) => setCommitMessage(e.target.value)}
-            sx={{ mt: 1, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCommitOpen(false)} sx={{ color: 'text.secondary' }}>Cancel</Button>
-          <Button onClick={handleCommit} disabled={!commitMessage.trim() || gitBusy} variant="contained" sx={{ bgcolor: 'success.main', color: 'background.default', '&:hover': { bgcolor: 'success.dark' } }}>
-            Commit
           </Button>
         </DialogActions>
       </Dialog>
@@ -1049,89 +750,6 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
         <DialogActions>
           <Button onClick={() => setWorkspaceTitleOpen(false)} disabled={workspaceTitleSaving} sx={{ color: 'text.secondary' }}>Cancel</Button>
           <Button onClick={handleWorkspaceTitleSave} disabled={workspaceTitleSaving} variant="contained" sx={{ bgcolor: 'success.main', color: 'background.default', '&:hover': { bgcolor: 'success.dark' } }}>Save</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={generateDialogOpen} onClose={() => !generateBusy && setGenerateDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: 'background.paper' } }}>
-        <DialogTitle sx={{ color: 'secondary.main' }}>Generate tests with AI</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>Select pages and/or API endpoints. The AI will generate UI and/or API test scenarios.</Typography>
-          <Typography variant="overline" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>Pages</Typography>
-          <Autocomplete
-            multiple
-            options={pages}
-            getOptionLabel={(p) => p.title || p.url || p.id}
-            value={pages.filter((p) => generatePageIds.includes(p.id))}
-            onChange={(_, next) => setGeneratePageIds(next.map((p) => p.id))}
-            renderTags={(value, getTagProps) =>
-              value.map((p, i) => (
-                <Chip
-                  key={p.id}
-                  label={p.title || p.url || '—'}
-                  size="small"
-                  {...getTagProps({ index: i })}
-                  sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}
-                />
-              ))
-            }
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                placeholder="Search pages…"
-                size="small"
-                sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' } }}
-              />
-            )}
-            sx={{ mb: 2 }}
-          />
-          <Typography variant="overline" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>API Bases</Typography>
-          <Autocomplete
-            multiple
-            options={generateApiBases}
-            getOptionLabel={(b) => b.title || b.baseUrl || b.id}
-            value={generateApiBases.filter((b) => generateBaseIds.includes(b.id))}
-            onChange={(_, next) => setGenerateBaseIds(next.map((b) => b.id))}
-            renderTags={(value, getTagProps) =>
-              value.map((b, i) => (
-                <Chip
-                  key={b.id}
-                  label={b.title || b.baseUrl || '—'}
-                  size="small"
-                  {...getTagProps({ index: i })}
-                  sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}
-                />
-              ))
-            }
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                placeholder="Search API bases…"
-                size="small"
-                sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' } }}
-              />
-            )}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            fullWidth
-            label="Additional instructions (optional)"
-            value={generatePrompt}
-            onChange={(e) => setGeneratePrompt(e.target.value)}
-            multiline
-            rows={2}
-            placeholder="e.g. Focus on login and profile API"
-            sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
-          />
-          {generateError && <Typography sx={{ color: 'error.main', mt: 2 }}>{generateError}</Typography>}
-          {generateResult && generateResult.length > 0 && (
-            <Typography sx={{ color: 'success.main', mt: 2 }}>Created {generateResult.length} test(s).</Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setGenerateDialogOpen(false)} disabled={generateBusy} sx={{ color: 'text.secondary' }}>Close</Button>
-          <Button onClick={handleGenerateSubmit} disabled={generateBusy || (generatePageIds.length === 0 && generateBaseIds.length === 0)} variant="contained" sx={{ bgcolor: 'success.main', color: 'background.default', '&:hover': { bgcolor: 'success.dark' } }}>
-            {generateBusy ? 'Generating…' : 'Generate'}
-          </Button>
         </DialogActions>
       </Dialog>
 
@@ -1236,6 +854,7 @@ export default function WorkspaceView({ workspacePath, workspace, pages, themeMo
 
   return (
     <MainLayout
+      topBar={<WindowTitleBar />}
       header={workspaceHeader}
       sidebar={workspaceSidebar}
       content={workspaceContent}

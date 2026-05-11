@@ -1,15 +1,37 @@
 const axios = require('axios');
+const fs = require('fs');
 const filestore = require('../store/filestore');
 const { assertHttpsWebUrl } = require('../utils/requireHttpsUrl');
 
 /**
  * Fetch Swagger/OpenAPI JSON from URL or use provided object.
  */
-async function fetchSwaggerSpec(urlOrSpec) {
+function buildAxiosAuthOptions(requestOptions = {}) {
+  const headers = requestOptions && requestOptions.headers && typeof requestOptions.headers === 'object'
+    ? requestOptions.headers
+    : {};
+  const auth = requestOptions && requestOptions.auth && typeof requestOptions.auth === 'object'
+    ? requestOptions.auth
+    : null;
+  const axiosOptions = { headers };
+  if (auth && auth.type === 'basic' && auth.username != null && auth.password != null) {
+    axiosOptions.auth = { username: String(auth.username), password: String(auth.password) };
+  }
+  return axiosOptions;
+}
+
+async function fetchSwaggerSpec(urlOrSpec, requestOptions = {}) {
+  if (urlOrSpec && typeof urlOrSpec === 'object' && urlOrSpec.mode === 'file' && urlOrSpec.filePath) {
+    const raw = fs.readFileSync(String(urlOrSpec.filePath), 'utf8');
+    return JSON.parse(raw);
+  }
   if (typeof urlOrSpec === 'string') {
     const trimmed = urlOrSpec.trim();
     if (trimmed.startsWith('https://')) {
-      const res = await axios.get(trimmed, { timeout: 15000 });
+      const res = await axios.get(trimmed, {
+        timeout: 15000,
+        ...buildAxiosAuthOptions(requestOptions),
+      });
       return res.data;
     }
     if (trimmed.startsWith('http://')) {
@@ -57,8 +79,8 @@ function parsePaths(spec) {
 /**
  * Import Swagger from URL or JSON: create one API base (baseUrl from servers) and endpoints linked via baseId.
  */
-async function importSwagger(workspacePath, urlOrSpec) {
-  const spec = await fetchSwaggerSpec(urlOrSpec);
+async function importSwagger(workspacePath, urlOrSpec, requestOptions = {}) {
+  const spec = await fetchSwaggerSpec(urlOrSpec, requestOptions);
   const baseUrl = spec.servers?.[0]?.url || (spec.host ? `${spec.schemes?.[0] || 'https'}://${spec.host}${(spec.basePath || '')}` : '');
   const normalizedBase = baseUrl.replace(/\/$/, '');
   if (!normalizedBase) {

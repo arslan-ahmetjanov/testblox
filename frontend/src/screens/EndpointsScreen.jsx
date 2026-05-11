@@ -28,6 +28,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
+import { buildSwaggerImportRequestOptions } from '../utils/swaggerImportRequestOptions';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 const AUTH_TYPES = [{ value: 'none', label: 'None' }, { value: 'bearer', label: 'Bearer Token' }, { value: 'basic', label: 'Basic Auth' }];
@@ -64,7 +65,15 @@ export default function EndpointsScreen({ onBack, onRefresh }) {
   });
   const [saving, setSaving] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [importSourceType, setImportSourceType] = useState('url');
   const [importUrl, setImportUrl] = useState('');
+  const [importFilePath, setImportFilePath] = useState('');
+  const [importAuthType, setImportAuthType] = useState('none');
+  const [importAuthToken, setImportAuthToken] = useState('');
+  const [importAuthUsername, setImportAuthUsername] = useState('');
+  const [importAuthPassword, setImportAuthPassword] = useState('');
+  const [importHeaderName, setImportHeaderName] = useState('');
+  const [importHeaderValue, setImportHeaderValue] = useState('');
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState(null);
 
@@ -145,13 +154,31 @@ export default function EndpointsScreen({ onBack, onRefresh }) {
 
   const handleImport = async () => {
     const url = importUrl.trim();
-    if (!url) return;
+    const filePath = importFilePath.trim();
+    if (importSourceType === 'url' && !url) return;
+    if (importSourceType === 'file' && !filePath) return;
     setImporting(true);
     setImportError(null);
     try {
-      await window.electronAPI.importSwagger(url);
+      const requestOptions = buildSwaggerImportRequestOptions({
+        authType: importAuthType,
+        authToken: importAuthToken,
+        authUsername: importAuthUsername,
+        authPassword: importAuthPassword,
+        headerName: importHeaderName,
+        headerValue: importHeaderValue,
+      });
+      const source = importSourceType === 'file' ? { mode: 'file', filePath } : url;
+      await window.electronAPI.importSwagger(source, requestOptions);
       setImportOpen(false);
       setImportUrl('');
+      setImportFilePath('');
+      setImportAuthType('none');
+      setImportAuthToken('');
+      setImportAuthUsername('');
+      setImportAuthPassword('');
+      setImportHeaderName('');
+      setImportHeaderValue('');
       load();
       onRefresh?.();
     } catch (e) {
@@ -167,7 +194,26 @@ export default function EndpointsScreen({ onBack, onRefresh }) {
         <Button startIcon={<ArrowBackIcon />} onClick={onBack} sx={{ color: 'primary.main' }}>Back</Button>
         <Typography variant="h6" sx={{ color: 'text.primary', flex: 1 }}>API Endpoints</Typography>
         <Button size="small" startIcon={<AddIcon />} onClick={handleAdd} sx={{ color: 'primary.main' }}>Add</Button>
-        <Button size="small" startIcon={<CloudDownloadIcon />} onClick={() => { setImportOpen(true); setImportError(null); }} sx={{ color: 'primary.main' }}>Import from Swagger</Button>
+        <Button
+          size="small"
+          startIcon={<CloudDownloadIcon />}
+          onClick={() => {
+            setImportOpen(true);
+            setImportError(null);
+            setImportSourceType('url');
+            setImportUrl('');
+            setImportFilePath('');
+            setImportAuthType('none');
+            setImportAuthToken('');
+            setImportAuthUsername('');
+            setImportAuthPassword('');
+            setImportHeaderName('');
+            setImportHeaderValue('');
+          }}
+          sx={{ color: 'primary.main' }}
+        >
+          Import from Swagger
+        </Button>
       </Box>
       <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
         Endpoints can be used in API tests and in AI-generated scenarios. Import from a Swagger/OpenAPI URL to add many at once.
@@ -299,19 +345,79 @@ export default function EndpointsScreen({ onBack, onRefresh }) {
       <Dialog open={importOpen} onClose={() => !importing && setImportOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: 'background.paper' } }}>
         <DialogTitle sx={{ color: 'text.primary' }}>Import from Swagger / OpenAPI</DialogTitle>
         <DialogContent>
-          <TextField
-            fullWidth
-            label="Spec URL"
-            value={importUrl}
-            onChange={(e) => setImportUrl(e.target.value)}
-            placeholder="https://api.example.com/swagger.json"
-            sx={{ mt: 1, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
-          />
+          <FormControl fullWidth size="small" sx={{ mt: 1, mb: 2, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}>
+            <InputLabel>Source</InputLabel>
+            <Select value={importSourceType} onChange={(e) => setImportSourceType(e.target.value)} label="Source">
+              <MenuItem value="url">URL</MenuItem>
+              <MenuItem value="file">JSON file</MenuItem>
+            </Select>
+          </FormControl>
+          {importSourceType === 'url' ? (
+            <TextField
+              fullWidth
+              label="Spec URL"
+              value={importUrl}
+              onChange={(e) => setImportUrl(e.target.value)}
+              placeholder="https://api.example.com/swagger.json"
+              sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
+            />
+          ) : (
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <TextField
+                fullWidth
+                label="JSON file"
+                value={importFilePath}
+                placeholder="Select swagger/openapi JSON file"
+                InputProps={{ readOnly: true }}
+                sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
+              />
+              <Button size="small" variant="outlined" onClick={async () => {
+                const p = await window.electronAPI.openSwaggerJson?.();
+                if (p) setImportFilePath(p);
+              }}>
+                Browse
+              </Button>
+            </Box>
+          )}
+          <FormControl fullWidth size="small" sx={{ mt: 2, mb: 1, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}>
+            <InputLabel>Auth type</InputLabel>
+            <Select value={importAuthType} onChange={(e) => setImportAuthType(e.target.value)} label="Auth type">
+              {AUTH_TYPES.map((a) => (<MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>))}
+            </Select>
+          </FormControl>
+          {importAuthType === 'bearer' && (
+            <TextField
+              fullWidth
+              size="small"
+              type="password"
+              label="Bearer token"
+              value={importAuthToken}
+              onChange={(e) => setImportAuthToken(e.target.value)}
+              sx={{ mb: 1, '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
+            />
+          )}
+          {importAuthType === 'basic' && (
+            <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+              <TextField fullWidth size="small" label="Username" value={importAuthUsername} onChange={(e) => setImportAuthUsername(e.target.value)} sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+              <TextField fullWidth size="small" type="password" label="Password" value={importAuthPassword} onChange={(e) => setImportAuthPassword(e.target.value)} sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+            </Box>
+          )}
+          <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+            <TextField fullWidth size="small" label="Custom header (optional)" placeholder="X-API-Key" value={importHeaderName} onChange={(e) => setImportHeaderName(e.target.value)} sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+            <TextField fullWidth size="small" label="Header value" value={importHeaderValue} onChange={(e) => setImportHeaderValue(e.target.value)} sx={{ '& .MuiOutlinedInput-root': { color: 'text.primary' } }} />
+          </Box>
           {importError && <Typography sx={{ color: 'error.main', mt: 2 }}>{importError}</Typography>}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setImportOpen(false)} disabled={importing} sx={{ color: 'text.secondary' }}>Cancel</Button>
-          <Button onClick={handleImport} disabled={!importUrl.trim() || importing} variant="contained" color="primary">Import</Button>
+          <Button
+            onClick={handleImport}
+            disabled={(importSourceType === 'url' ? !importUrl.trim() : !importFilePath.trim()) || importing}
+            variant="contained"
+            color="primary"
+          >
+            Import
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

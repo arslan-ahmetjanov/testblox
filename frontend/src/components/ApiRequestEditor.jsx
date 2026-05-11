@@ -200,9 +200,9 @@ export default function ApiRequestEditor({
     setFormFields(parsed.formFields?.length ? parsed.formFields : [emptyFormField()]);
   };
 
-  const handleImportApply = () => {
+  const handleImportApply = async () => {
     try {
-      const parsed = parseCurl(importText);
+      const parsed = await parseCurl(importText);
       applyParsedCurl(parsed);
       setImportOpen(false);
       setImportText('');

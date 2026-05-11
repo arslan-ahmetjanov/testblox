@@ -1,9 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 const { readBuildConfig } = require('../config/buildConfig');
+const filestore = require('./filestore');
 
 const LLM_FILENAME = 'llm.json';
 const WORKSPACE_LLM = '.testblox/llm.json';
+/** Workspace LLM secrets live in project root `.env` (gitignored), not in JSON. */
+const ENV_LLM_API_KEY = 'TESTBLOX_LLM_API_KEY';
+const ENV_LLM_MODEL = 'TESTBLOX_LLM_MODEL';
 
 function readJsonSafe(filePath, defaultValue = null) {
   try {
@@ -31,7 +35,7 @@ function getGlobalConfigPath(userDataPath) {
 }
 
 /**
- * Workspace override: workspaceRoot /.testblox/llm.json
+ * Legacy path (pre-.env): workspaceRoot /.testblox/llm.json — read for migration only; secrets are not written here anymore.
  */
 function getWorkspaceConfigPath(workspaceRoot) {
   return workspaceRoot ? path.join(workspaceRoot, WORKSPACE_LLM) : null;
@@ -51,13 +55,29 @@ function getGlobalConfig(userDataPath) {
 
 function getWorkspaceConfig(workspaceRoot) {
   const buildConfig = readBuildConfig();
-  const filePath = getWorkspaceConfigPath(workspaceRoot);
-  if (!filePath) return null;
-  const raw = readJsonSafe(filePath);
-  if (!raw) return null;
+  if (!workspaceRoot) return null;
+  const envMap = filestore.readEnvFile(workspaceRoot);
+  let apiKey =
+    envMap[ENV_LLM_API_KEY] != null && String(envMap[ENV_LLM_API_KEY]).trim() !== ''
+      ? String(envMap[ENV_LLM_API_KEY]).trim()
+      : null;
+  let modelName =
+    envMap[ENV_LLM_MODEL] != null && String(envMap[ENV_LLM_MODEL]).trim() !== ''
+      ? String(envMap[ENV_LLM_MODEL]).trim()
+      : null;
+
+  const legacyPath = getWorkspaceConfigPath(workspaceRoot);
+  if ((!apiKey || !modelName) && legacyPath && fs.existsSync(legacyPath)) {
+    const raw = readJsonSafe(legacyPath);
+    if (raw) {
+      if (!apiKey && raw.apiKey) apiKey = raw.apiKey;
+      if (!modelName && raw.modelName) modelName = raw.modelName;
+    }
+  }
+
   return {
-    apiKey: raw.apiKey ?? null,
-    modelName: raw.modelName ?? null,
+    apiKey,
+    modelName,
     apiBaseUrl: buildConfig.llmApiBaseUrl,
   };
 }
@@ -78,18 +98,17 @@ function chooseValueWithSource({ envValue, workspaceValue, globalValue, defaultV
 function getEffectiveConfigDetails(userDataPath, workspaceRoot) {
   const buildConfig = readBuildConfig();
   const workspace = workspaceRoot ? getWorkspaceConfig(workspaceRoot) : null;
-  const globalConfig = getGlobalConfig(userDataPath);
 
   const apiKeyResolved = chooseValueWithSource({
     envValue: process.env.TESTBLOX_LLM_API_KEY,
     workspaceValue: workspace?.apiKey,
-    globalValue: globalConfig.apiKey,
+    globalValue: null,
     defaultValue: null,
   });
   const modelNameResolved = chooseValueWithSource({
     envValue: process.env.TESTBLOX_LLM_MODEL,
     workspaceValue: workspace?.modelName,
-    globalValue: globalConfig.modelName,
+    globalValue: null,
     defaultValue: null,
   });
 
@@ -108,8 +127,8 @@ function getEffectiveConfigDetails(userDataPath, workspaceRoot) {
 }
 
 /**
- * Effective config: workspace override first, then global, then env. For API calls (e.g. OpenRouter).
- * Env: TESTBLOX_LLM_API_KEY, TESTBLOX_LLM_MODEL, TESTBLOX_LLM_API_BASE_URL.
+ * Effective config: process env, then workspace `.env` only (no global app-store token).
+ * Env: TESTBLOX_LLM_API_KEY, TESTBLOX_LLM_MODEL.
  */
 function getEffectiveConfig(userDataPath, workspaceRoot) {
   return getEffectiveConfigDetails(userDataPath, workspaceRoot).values;
@@ -126,17 +145,48 @@ function saveGlobalConfig(userDataPath, config) {
   return getGlobalConfig(userDataPath);
 }
 
+function removeLegacyWorkspaceLlmJson(workspaceRoot) {
+  const legacyPath = getWorkspaceConfigPath(workspaceRoot);
+  if (!legacyPath || !fs.existsSync(legacyPath)) return;
+  try {
+    fs.unlinkSync(legacyPath);
+  } catch (_) {}
+}
+
 function saveWorkspaceConfig(workspaceRoot, config) {
-  const buildConfig = readBuildConfig();
-  const filePath = getWorkspaceConfigPath(workspaceRoot);
-  if (!filePath) return null;
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  writeJsonAtomic(filePath, {
-    apiKey: config.apiKey ?? null,
-    modelName: config.modelName ?? null,
-    apiBaseUrl: buildConfig.llmApiBaseUrl,
-  });
+  if (!workspaceRoot) return null;
+  const cur = getWorkspaceConfig(workspaceRoot);
+
+  const nextApi =
+    config.apiKey !== undefined
+      ? config.apiKey != null && String(config.apiKey).trim() !== ''
+        ? String(config.apiKey).trim()
+        : null
+      : cur.apiKey;
+  const nextModel =
+    config.modelName !== undefined
+      ? config.modelName != null && String(config.modelName).trim() !== ''
+        ? String(config.modelName).trim()
+        : null
+      : cur.modelName;
+
+  const toWrite = {};
+  const toRemove = [];
+  if (nextApi) toWrite[ENV_LLM_API_KEY] = nextApi;
+  else toRemove.push(ENV_LLM_API_KEY);
+  if (nextModel) toWrite[ENV_LLM_MODEL] = nextModel;
+  else toRemove.push(ENV_LLM_MODEL);
+
+  filestore.writeEnvFile(workspaceRoot, toWrite, toRemove);
+  removeLegacyWorkspaceLlmJson(workspaceRoot);
+
+  try {
+    require('dotenv').config({
+      path: path.join(workspaceRoot, '.env'),
+      override: true,
+    });
+  } catch (_) {}
+
   return getWorkspaceConfig(workspaceRoot);
 }
 

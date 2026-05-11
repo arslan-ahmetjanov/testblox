@@ -14,8 +14,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Select,
-  MenuItem,
   Alert,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -263,25 +261,14 @@ export default function SharedStepsScreen({ onBack, onRefresh }) {
           <SectionLabel sx={{ mb: 1 }}>Steps</SectionLabel>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', mb: 2 }}>
             <Button size="small" startIcon={<AddIcon />} onClick={handleAddUiStep} sx={{ color: 'primary.main' }}>Add UI step</Button>
-            <Select
-              size="small"
-              displayEmpty
-              value=""
-              onChange={(e) => { const v = e.target.value; if (v) handleAddApiStep(v); e.target.value = ''; }}
-              sx={{ minWidth: 160, color: 'text.primary', '.MuiOutlinedInput-notchedOutline': { borderColor: 'divider' } }}
-              renderValue={() => 'Add API step…'}
-            >
-              <MenuItem value="request">Request</MenuItem>
-              <MenuItem value="assertStatus">Assert status</MenuItem>
-              <MenuItem value="assertBody">Assert body</MenuItem>
-            </Select>
+            <Button size="small" startIcon={<AddIcon />} onClick={() => handleAddApiStep('request')} sx={{ color: 'primary.main' }}>Add API step</Button>
           </Box>
           {steps.length === 0 && (
             <Box sx={{ py: 2, textAlign: 'center' }}>
               <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>No inner steps. Add UI or API steps for this shared block.</Typography>
               <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
                 <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={handleAddUiStep} sx={{ bgcolor: 'success.main', color: 'background.default' }}>Add UI step</Button>
-                <Button size="small" variant="outlined" onClick={() => handleAddApiStep('request')} sx={{ color: 'primary.main' }}>Add API request</Button>
+                <Button size="small" variant="outlined" onClick={() => handleAddApiStep('request')} sx={{ color: 'primary.main' }}>Add API step</Button>
               </Box>
             </Box>
           )}

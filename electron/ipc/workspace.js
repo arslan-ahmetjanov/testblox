@@ -104,9 +104,9 @@ function registerWorkspaceIpc() {
     return filestore.updateEndpoint(root, endpointId, data);
   }));
   ipcMain.handle('endpoints:delete', withWorkspace((root, endpointId) => filestore.deleteEndpoint(root, endpointId)));
-  ipcMain.handle('endpoints:importSwagger', withWorkspace(async (root, urlOrSpec) => {
+  ipcMain.handle('endpoints:importSwagger', withWorkspace(async (root, urlOrSpec, requestOptions) => {
     const swaggerParser = require('../services/swaggerParser');
-    return swaggerParser.importSwagger(root, urlOrSpec);
+    return swaggerParser.importSwagger(root, urlOrSpec, requestOptions || null);
   }));
 
   ipcMain.handle('pages:list', withWorkspace((root) => filestore.listPages(root)));
@@ -127,7 +127,12 @@ function registerWorkspaceIpc() {
   }));
   ipcMain.handle('pages:delete', withWorkspace((root, pageId) => filestore.deletePage(root, pageId)));
 
-  ipcMain.handle('tests:list', withWorkspace((root, pageId) => filestore.listTests(root, pageId || null)));
+  ipcMain.handle('tests:list', withWorkspace((root, pageOrOptions) => {
+    if (pageOrOptions && typeof pageOrOptions === 'object' && !Array.isArray(pageOrOptions)) {
+      return filestore.listTests(root, pageOrOptions);
+    }
+    return filestore.listTests(root, pageOrOptions || null);
+  }));
   ipcMain.handle('tests:get', withWorkspace((root, testId) => filestore.readTest(root, testId)));
   ipcMain.handle('tests:create', withWorkspace((root, data) => filestore.createTest(root, data)));
   ipcMain.handle('tests:update', withWorkspace((root, testId, data) => filestore.updateTest(root, testId, data)));

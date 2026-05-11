@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const isDev = require('electron-is-dev');
 
 const filestore = require('./store/filestore');
@@ -9,12 +9,55 @@ const { registerWorkspaceIpc, setCurrentPath } = require('./ipc/workspace');
 
 let mainWindow = null;
 
-function createWindow() {
+function getAppIconPath() {
+  const iconPath = path.join(__dirname, 'assets', 'icon.png');
+  return fs.existsSync(iconPath) ? iconPath : undefined;
+}
+
+function attachWindowDiagnostics(win) {
+  if (!win) return;
+  const wc = win.webContents;
+  wc.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    console.error(
+      '[TestBlox] did-fail-load',
+      { errorCode, errorDescription, validatedURL },
+    );
+  });
+  wc.on('render-process-gone', (event, details) => {
+    console.error('[TestBlox] render-process-gone', details);
+  });
+}
+
+async function loadMainWindowContent(win) {
+  const prodPath = path.join(__dirname, '../renderer/index.html');
+  if (app.isPackaged) {
+    await win.loadFile(prodPath);
+    return;
+  }
+  if (isDev) {
+    const devUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173';
+    try {
+      await win.loadURL(devUrl);
+      console.log('[TestBlox] Loaded dev server:', devUrl);
+    } catch (err) {
+      console.error('[TestBlox] Dev server not reachable at', devUrl, '-', err?.message || err);
+      console.error('[TestBlox] Falling back to file://', prodPath);
+      await win.loadFile(prodPath);
+    }
+    return;
+  }
+  await win.loadFile(prodPath);
+}
+
+async function createWindow() {
+  const icon = getAppIconPath();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    ...(icon ? { icon } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -22,27 +65,45 @@ function createWindow() {
       sandbox: false,
     },
     show: false,
+    frame: false,
+    autoHideMenuBar: true,
   });
+  mainWindow.removeMenu();
+  Menu.setApplicationMenu(null);
 
-  const devUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173';
-  const prodPath = path.join(__dirname, '../renderer/index.html');
+  attachWindowDiagnostics(mainWindow);
 
-  if (isDev && process.env.ELECTRON_START_URL) {
-    mainWindow.loadURL(devUrl).catch((err) => console.error('Load URL error:', err));
-  } else {
-    mainWindow.loadFile(prodPath).catch((err) => console.error('Load file error:', err));
+  if (isDev && !app.isPackaged && process.env.ELECTRON_OPEN_DEVTOOLS === '1') {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.on('closed', () => { mainWindow = null; });
+
+  try {
+    await loadMainWindowContent(mainWindow);
+  } catch (err) {
+    console.error('[TestBlox] Failed to load window content:', err);
+  }
+  const emitMaximizeState = () => {
+    if (!mainWindow) return;
+    mainWindow.webContents.send('main:window-maximized', mainWindow.isMaximized());
+  };
+  mainWindow.on('maximize', emitMaximizeState);
+  mainWindow.on('unmaximize', emitMaximizeState);
 }
 
-app.whenReady().then(() => {
-  createWindow();
+app.whenReady().then(async () => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.testblox.desktop');
+  }
+  await createWindow();
   const registerTestsRunIpc = require('./ipc/testsRun');
   registerTestsRunIpc(mainWindow);
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow().catch((e) => console.error('[TestBlox] createWindow failed:', e));
+    }
   });
 });
 
@@ -68,6 +129,16 @@ ipcMain.handle('dialog:openZip', async () => {
     properties: ['openFile'],
     title: 'Select workspace ZIP file',
     filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+  });
+  if (canceled || !filePaths || filePaths.length === 0) return null;
+  return filePaths[0];
+});
+
+ipcMain.handle('dialog:openSwaggerJson', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    title: 'Select Swagger/OpenAPI JSON file',
+    filters: [{ name: 'JSON file', extensions: ['json'] }],
   });
   if (canceled || !filePaths || filePaths.length === 0) return null;
   return filePaths[0];
@@ -257,6 +328,37 @@ ipcMain.handle('workspace:createProject', async (_, parentPath, projectName) => 
 
 // --- IPC: get app paths ---
 ipcMain.handle('app:getPath', (_, name) => app.getPath(name));
+
+ipcMain.handle('shell:openPath', async (_, targetPath) => {
+  const { shell } = require('electron');
+  const { getCurrentPath } = require('./ipc/workspace');
+  if (!targetPath || typeof targetPath !== 'string') throw new Error('Invalid path');
+  const workspacePath = getCurrentPath();
+  if (!workspacePath) throw new Error('No workspace opened');
+  const allowedRoot = path.resolve(path.join(workspacePath, '.testblox', 'run-logs'));
+  const resolved = path.resolve(targetPath);
+  const underLogs =
+    resolved === allowedRoot || resolved.startsWith(allowedRoot + path.sep);
+  if (!underLogs) throw new Error('Path must be under workspace .testblox/run-logs');
+  const errMsg = await shell.openPath(resolved);
+  if (errMsg) throw new Error(errMsg);
+  return true;
+});
+ipcMain.handle('window:minimize', () => {
+  if (!mainWindow) return;
+  mainWindow.minimize();
+});
+ipcMain.handle('window:toggleMaximize', () => {
+  if (!mainWindow) return false;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+  return mainWindow.isMaximized();
+});
+ipcMain.handle('window:close', () => {
+  if (!mainWindow) return;
+  mainWindow.close();
+});
+ipcMain.handle('window:isMaximized', () => (mainWindow ? mainWindow.isMaximized() : false));
 
 // --- Git (implemented in ipc/git.js) ---
 const registerGitIpc = require('./ipc/git');

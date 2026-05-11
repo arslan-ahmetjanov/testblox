@@ -125,7 +125,10 @@ IMPORTANT: Respond ONLY with valid JSON without any additional text, comments, o
 `.trim();
 
 async function generateTestsWithAI(userDataPath, workspacePath, pageId, customPrompt = null) {
-  require('dotenv').config({ path: require('path').join(workspacePath, '.env') });
+  require('dotenv').config({
+    path: require('path').join(workspacePath, '.env'),
+    override: true,
+  });
   const config = llmConfig.getEffectiveConfig(userDataPath, workspacePath);
   if (!llmConfig.isConfigValid(config)) {
     throw new Error('LLM configuration is not set. Configure in Settings (OpenRouter API key, model, URL).');
@@ -170,7 +173,10 @@ async function generateTestsWithAI(userDataPath, workspacePath, pageId, customPr
 }
 
 async function generateFromSelection(userDataPath, workspacePath, options = {}) {
-  require('dotenv').config({ path: require('path').join(workspacePath, '.env') });
+  require('dotenv').config({
+    path: require('path').join(workspacePath, '.env'),
+    override: true,
+  });
   const { pageIds = [], endpointIds = [], customPrompt = '' } = options;
   const config = llmConfig.getEffectiveConfig(userDataPath, workspacePath);
   if (!llmConfig.isConfigValid(config)) {

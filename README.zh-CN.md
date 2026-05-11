@@ -54,8 +54,8 @@
 
 1. 打开 [Releases](https://github.com/arslan-ahmetjanov/testblox/releases)。
 2. 下载：
-   - **TestBlox Setup 1.0.0.exe** — 安装版（推荐），或  
-   - **TestBlox 1.0.0.exe** — 便携版，无需安装。
+   - **TestBlox Setup 1.1.0.exe** — 安装版（推荐），或  
+   - **TestBlox 1.1.0.exe** — 便携版，无需安装。
 3. 运行即可。便携版可从任意目录运行。
 
 ### 方式二：从源码构建
@@ -67,7 +67,7 @@ npm ci
 npm run build
 ```
 
-输出：`dist/TestBlox Setup 1.0.0.exe` 与 `dist/TestBlox 1.0.0.exe`（便携版）。
+输出：`dist/TestBlox Setup 1.1.0.exe` 与 `dist/TestBlox 1.1.0.exe`（便携版）。
 
 ---
 

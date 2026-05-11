@@ -5,7 +5,6 @@ import {
   Typography,
   Paper,
   TextField,
-  CircularProgress,
   IconButton,
   Dialog,
   DialogTitle,
@@ -23,6 +22,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import LinkIcon from '@mui/icons-material/Link';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditIcon from '@mui/icons-material/Edit';
+import ParsePageElementsDialog from '../components/ParsePageElementsDialog';
 
 export default function PageScreen({ pageId, page: initialPage, onBack, onRefresh }) {
   const [page, setPage] = useState(initialPage || null);
@@ -30,8 +30,7 @@ export default function PageScreen({ pageId, page: initialPage, onBack, onRefres
   const [editTitle, setEditTitle] = useState('');
   const [editUrl, setEditUrl] = useState('');
   const [pageSaveLoading, setPageSaveLoading] = useState(false);
-  const [parsing, setParsing] = useState(false);
-  const [parseError, setParseError] = useState(null);
+  const [parseOptionsOpen, setParseOptionsOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [elementsFilter, setElementsFilter] = useState('');
@@ -49,32 +48,6 @@ export default function PageScreen({ pageId, page: initialPage, onBack, onRefres
     if (!pageId || !window.electronAPI) return;
     window.electronAPI.getPage(pageId).then((data) => setPage(data)).catch(() => setPage(null));
   }, [pageId]);
-
-  const handleParsePage = async () => {
-    if (!page?.url) return;
-    setParsing(true);
-    setParseError(null);
-    try {
-      const viewport = page.viewportId && page.viewport
-        ? { width: page.viewport?.width, height: page.viewport?.height }
-        : null;
-      const elements = await window.electronAPI.parsePage(page.url, viewport);
-      const ids = (page.webElements || []).map((e) => e.id);
-      const newElements = elements.map((el) => ({
-        id: ids.includes(el.id) ? el.id : crypto.randomUUID?.() || `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        title: el.title,
-        selector: el.selector,
-        type: el.type || 'element',
-      }));
-      await window.electronAPI.updatePage(pageId, { webElements: newElements });
-      setPage((p) => (p ? { ...p, webElements: newElements } : null));
-      onRefresh?.();
-    } catch (e) {
-      setParseError(e.message || 'Parse failed');
-    } finally {
-      setParsing(false);
-    }
-  };
 
   const startEditPage = () => {
     setEditTitle(page?.title ?? '');
@@ -199,15 +172,13 @@ export default function PageScreen({ pageId, page: initialPage, onBack, onRefres
         <Button
           variant="outlined"
           size="small"
-          startIcon={parsing ? <CircularProgress size={16} /> : <RefreshIcon />}
-          disabled={parsing || !page.url}
-          onClick={handleParsePage}
+          startIcon={<RefreshIcon />}
+          onClick={() => setParseOptionsOpen(true)}
           sx={{ color: 'primary.main', borderColor: 'primary.main' }}
         >
-          Parse page elements
+          Parse/import page elements
         </Button>
       </Box>
-      {parseError && <Typography color="error" variant="body2" sx={{ mb: 1 }}>{parseError}</Typography>}
       <Paper sx={{ p: 2, mb: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 1 }}>
           <Typography variant="overline" sx={{ color: 'primary.main' }}>Elements ({elements.length})</Typography>
@@ -295,6 +266,17 @@ export default function PageScreen({ pageId, page: initialPage, onBack, onRefres
           <Button onClick={handleAddElement} disabled={elementsSaving || !newElSelector.trim()} variant="contained" sx={{ bgcolor: 'primary.main' }}>Add</Button>
         </DialogActions>
       </Dialog>
+
+      <ParsePageElementsDialog
+        open={parseOptionsOpen}
+        onClose={() => setParseOptionsOpen(false)}
+        onSuccess={() => {
+          window.electronAPI.getPage(pageId).then((data) => setPage(data)).catch(() => {});
+          onRefresh?.();
+        }}
+        targetPageId={pageId}
+        pages={[page]}
+      />
 
       <Dialog open={deleteConfirmOpen} onClose={() => !deleteLoading && setDeleteConfirmOpen(false)} PaperProps={{ sx: { bgcolor: 'background.paper' } }}>
         <DialogTitle sx={{ color: 'text.primary' }}>Delete page</DialogTitle>

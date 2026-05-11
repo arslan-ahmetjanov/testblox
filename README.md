@@ -36,6 +36,16 @@ There is no other free, desktop, no-code tool that does **AI test generation + G
 | **API test runner** | Execute HTTP requests, assert status and body (e.g. JSONPath). |
 | **Git integration** | Open a folder that is a Git repo; commit and push tests with your team. |
 | **Reports** | View run results and history inside the app. |
+| **Bulk run & workers** | Run many tests in parallel (up to 10 workers); per-test progress, optional file logs under `.testblox/run-logs/`. |
+| **Git UI** | Clone, pull, push, branch, and commit from the workspace without leaving the app. |
+
+### What’s new in 1.1.0
+
+- **Run screen:** Per-test progress with titles; progress stages (screenshot, closing browser/resources, saving report); optional **write run logs to disk** (session `run.log`, `meta.json`, one file per test); open log folder from the UI; workers up to 10.
+- **Test editor:** Insert **shared steps** via searchable **Autocomplete** (same idea as element/action pickers); **Add shared step** opens Shared Steps when the catalog is empty.
+- **Shared step editor:** **Add API step** matches the test editor (text button + icon instead of a dropdown).
+- **App shell:** Custom title bar, dedicated **Git** and **AI generate** flows, page parse / Swagger import request options where applicable.
+- **Build & tooling:** `scripts/` helpers documented below; app icon normalization; `.gitignore` excludes `.testblox/run-logs/`.
 
 ---
 
@@ -54,8 +64,8 @@ There is no other free, desktop, no-code tool that does **AI test generation + G
 
 1. Go to [Releases](https://github.com/arslan-ahmetjanov/testblox/releases).
 2. Download:
-   - **TestBlox Setup 1.0.0.exe** — installer (recommended), or  
-   - **TestBlox 1.0.0.exe** — portable, no install.
+   - **TestBlox Setup 1.1.0.exe** — installer (recommended), or  
+   - **TestBlox 1.1.0.exe** — portable, no install.
 3. Run the executable. For the portable version, run it from any folder.
 
 ### Option 2: Build from source
@@ -67,7 +77,7 @@ npm ci
 npm run build
 ```
 
-Output: `dist/TestBlox Setup 1.0.0.exe` and `dist/TestBlox 1.0.0.exe` (portable).
+Output: `dist/TestBlox Setup 1.1.0.exe` and `dist/TestBlox 1.1.0.exe` (portable).
 
 ---
 
@@ -121,7 +131,7 @@ When you open a folder as a workspace, TestBlox uses (and may create):
 
 ```
 your-project/
-├── .testblox/          # workspace config, actions, variables, shared steps
+├── .testblox/          # workspace config, actions, variables, shared steps; may contain run-logs/ when debug logging is enabled (ignored by git)
 ├── pages/              # parsed pages (URL, elements, selectors)
 ├── tests/              # test cases (UI and API)
 ├── endpoints/          # API endpoints (e.g. from Swagger)
@@ -150,6 +160,21 @@ Variable values (logins, passwords, tokens) are stored in a **`.env`** file in t
 - **Execution:** Playwright (Chromium), in-app API runner  
 - **AI:** OpenRouter-compatible API (e.g. GPT-4o-mini)  
 - **Storage:** JSON files in the workspace
+
+---
+
+## Repo scripts (`scripts/`)
+
+These Node scripts support packaging and CI. They are **not** required for normal app use.
+
+| Script | npm command | Purpose |
+|--------|-------------|---------|
+| [`scripts/write-build-config.js`](scripts/write-build-config.js) | `npm run write-build-config` | Writes `electron/config/buildConfig.json`: `flavor` (`default` or `custom` via `--flavor=custom`), LLM API base URL from `--llm-url=` or env `TESTBLOX_BUILD_LLM_API_BASE_URL`. Used by `npm run build`, `build:dir`, and `build:custom*`. |
+| [`scripts/copy-release-exe.js`](scripts/copy-release-exe.js) | (after `electron-builder` in `npm run build`) | Copies built `.exe` files from `dist/` to `release/`. |
+| [`scripts/llm-config-smoke.js`](scripts/llm-config-smoke.js) | `npm run smoke:llm-config` | Smoke test for LLM / build-config resolution across flavors. |
+| [`scripts/normalize-app-icon.js`](scripts/normalize-app-icon.js) | `npm run icons:app` | Resizes `electron/assets/icon.png` to 512×512 PNG for packaging (requires devDependency `sharp`). |
+
+For a standard Windows release, run `npm ci` then `npm run build` from the repo root. Custom builds that embed a different LLM base URL use `npm run build:custom` and tags `custom-v*` (see **Custom build release tagging** above).
 
 ---
 

@@ -133,7 +133,7 @@ function parseInteractiveElements(html) {
   return result;
 }
 
-async function parsePage(url, viewport = null) {
+async function parsePageUrl(url, viewport = null, requestOptions = null) {
   const executablePath = resolveParseExecutablePath();
   const launchOptions = { headless: true };
   if (executablePath) launchOptions.executablePath = executablePath;
@@ -146,7 +146,27 @@ async function parsePage(url, viewport = null) {
         height: Number(viewport.height) || 720,
       };
     }
+    const headers = requestOptions && requestOptions.headers && typeof requestOptions.headers === 'object'
+      ? requestOptions.headers
+      : null;
+    if (headers && Object.keys(headers).length > 0) {
+      contextOptions.extraHTTPHeaders = headers;
+    }
     const context = await browser.newContext(contextOptions);
+    if (
+      requestOptions &&
+      requestOptions.auth &&
+      requestOptions.auth.type === 'basic' &&
+      requestOptions.auth.username != null &&
+      requestOptions.auth.password != null
+    ) {
+      await context.setExtraHTTPHeaders({
+        ...(headers || {}),
+        Authorization: `Basic ${Buffer.from(
+          `${String(requestOptions.auth.username)}:${String(requestOptions.auth.password)}`
+        ).toString('base64')}`,
+      });
+    }
     const page = await context.newPage();
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
     await new Promise((r) => setTimeout(r, 800));
@@ -159,4 +179,15 @@ async function parsePage(url, viewport = null) {
   }
 }
 
-module.exports = { parsePage, parseInteractiveElements };
+function parsePageFromHtml(html) {
+  return parseInteractiveElements(html);
+}
+
+async function parsePage(url, viewport = null, requestOptions = null) {
+  if (typeof url !== 'string' || !url.trim()) {
+    throw new Error('Page URL must be a non-empty string');
+  }
+  return parsePageUrl(url, viewport, requestOptions);
+}
+
+module.exports = { parsePage, parsePageUrl, parsePageFromHtml, parseInteractiveElements };

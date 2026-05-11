@@ -130,9 +130,11 @@ export default function VariablesScreen({ onBack }) {
                 <TableCell>
                   <TextField
                     size="small"
+                    type="password"
                     placeholder="value"
                     value={row.value ?? ''}
                     onChange={(e) => handleChange(row.id, 'value', e.target.value)}
+                    autoComplete="new-password"
                     sx={{ width: '100%', '& .MuiOutlinedInput-root': { color: 'text.primary' } }}
                   />
                 </TableCell>

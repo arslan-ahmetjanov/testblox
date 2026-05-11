@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const DEFAULT_LLM_API_BASE_URL = 'https://openrouter.ai/api/v1';
+const DEFAULT_LLM_API_BASE_URL = 'https://api.vsegpt.ru/v1';
 
 function getArg(prefix) {
   const raw = process.argv.find((x) => x.startsWith(`${prefix}=`));

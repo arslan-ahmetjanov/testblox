@@ -17,6 +17,7 @@ function resolveVariableValue(v) {
     }
   }
   const name = v.name != null ? String(v.name).trim() : '';
+  if (v.value != null && String(v.value) !== '') return String(v.value);
   return name ? (process.env[name] ?? '') : '';
 }
 
@@ -189,13 +190,21 @@ function resolveStep(step, page, actions) {
 }
 
 /**
- * Run a single test and return report. Progress can be sent via onProgress(stepIndex, total, message).
+ * Run a single test and return report.
+ * onProgress(stepIndex, total, message, meta?) — meta.runStage: 'step' | 'screenshot' | 'teardown' | 'persist'
+ * options.log(line) optional file log for this test.
  */
 async function runTest(workspacePath, testId, options = {}) {
-  const { onProgress = () => {}, saveReportToFile = true, screenshotOnFailureOnly = false } = options;
-  require('dotenv').config({ path: path.join(workspacePath, '.env') });
+  const { onProgress: onProgressCb = () => {}, saveReportToFile = true, screenshotOnFailureOnly = false } = options;
+  const log = typeof options.log === 'function' ? options.log : () => {};
+  const onProgress = (stepIndex, total, message, meta) => onProgressCb(stepIndex, total, message, meta);
+  require('dotenv').config({
+    path: path.join(workspacePath, '.env'),
+    override: true,
+  });
   const test = filestore.readTest(workspacePath, testId);
   if (!test) throw new Error(`Test ${testId} not found`);
+  log(`Start testId=${testId} title=${test.title || '(untitled)'}`);
   const actions = filestore.readActions(workspacePath);
   const variablesList = filestore.readVariables(workspacePath) || [];
   // varsMap is built fresh for each runTest() call, so variables with valuePattern get a new generated value on every test run.
@@ -205,6 +214,8 @@ async function runTest(workspacePath, testId, options = {}) {
       .map((v) => [String(v.name).trim(), resolveVariableValue(v)])
   );
   const steps = expandSteps(workspacePath, test.steps || []);
+  const progressTotal = Math.max(1, steps.length + 1);
+  log(`Expanded steps count=${steps.length} progressTotal=${progressTotal}`);
 
   const hasUiSteps = steps.some((s) => !s.type || s.type === 'ui');
   const hasApiSteps = steps.some((s) => s.type === 'api' || ['request', 'assertStatus', 'assertBody'].includes(s.type));
@@ -272,9 +283,11 @@ async function runTest(workspacePath, testId, options = {}) {
 
     let currentPageId = page?.id || null;
     if (hasUiSteps && pwPage && page) {
-      onProgress(0, steps.length + 1, 'Opening page...');
+      onProgress(0, progressTotal, 'Opening page...');
+      log(`Opening page url=${page.url}`);
       assertHttpsOrAboutBlank(page.url, 'Page URL');
       await pwPage.goto(page.url || 'about:blank', { timeout: 30000 });
+      log('Opening page: navigation done');
       reportSteps.push({ value: `Open ${page.url}`, status: 'passed', error: null, screenshotPath: await captureScreenshot(0) });
     }
 
@@ -285,7 +298,9 @@ async function runTest(workspacePath, testId, options = {}) {
 
       // API steps (via Playwright request context)
       if (isApiStep && requestContext) {
-        onProgress(i + 1, steps.length + 1, apiAction === 'request' ? `Request: ${step.endpointId || step.targetId}` : apiAction);
+        const apiMsg = apiAction === 'request' ? `Request: ${step.endpointId || step.targetId}` : apiAction;
+        log(`API step ${i + 1}/${steps.length} ${apiMsg}`);
+        onProgress(i + 1, progressTotal, apiMsg);
         let stepSuccess = false;
         let stepError = null;
         let stepValue = '';
@@ -434,6 +449,7 @@ async function runTest(workspacePath, testId, options = {}) {
           request: stepRequest || undefined,
           response: stepResponse || undefined,
         });
+        log(`API step ${i + 1} result=${stepSuccess ? 'passed' : 'failed'}${stepError ? ` error=${stepError}` : ''}`);
         if (!stepSuccess) break;
         continue;
       }
@@ -464,6 +480,7 @@ async function runTest(workspacePath, testId, options = {}) {
         break;
       }
       if (stepPage.id !== currentPageId) {
+        log(`Navigating to step page url=${stepPage.url}`);
         assertHttpsOrAboutBlank(stepPage.url, 'Page URL');
         await pwPage.goto(stepPage.url || 'about:blank', { timeout: 30000 });
         currentPageId = stepPage.id;
@@ -471,7 +488,8 @@ async function runTest(workspacePath, testId, options = {}) {
       const resolved = resolveStep(step, stepPage, actions);
       const { selector, title, actionName, value: rawValue } = resolved;
       const value = substitute(rawValue, varsMap);
-      onProgress(i + 1, steps.length + 1, `${actionName}: ${title}`);
+      log(`UI step ${i + 1}/${steps.length} ${actionName}: ${title}`);
+      onProgress(i + 1, progressTotal, `${actionName}: ${title}`);
       let stepSuccess = false;
       let stepError = null;
       try {
@@ -480,19 +498,30 @@ async function runTest(workspacePath, testId, options = {}) {
       } catch (err) {
         stepError = err.message || String(err);
       }
+      const willCaptureShot = !!(reportDir && pwPage && !(screenshotOnFailureOnly && stepSuccess));
+      if (willCaptureShot) {
+        onProgress(i + 1, progressTotal, 'Capturing screenshot…', { runStage: 'screenshot' });
+        log('Capturing screenshot...');
+      }
       const screenshotPath = await captureScreenshot(i + 1, stepSuccess ? '' : 'failure');
+      if (willCaptureShot) log(`Screenshot done path=${screenshotPath || 'none'}`);
       reportSteps.push({
         value: `${actionName}(${title})${value ? ': ' + value : ''}`,
         status: stepSuccess ? 'passed' : 'failed',
         error: stepError,
         screenshotPath: screenshotPath || undefined,
       });
+      log(`UI step ${i + 1} result=${stepSuccess ? 'passed' : 'failed'}${stepError ? ` error=${stepError}` : ''}`);
       if (!stepSuccess) break;
     }
     success = reportSteps.every((s) => s.status === 'passed');
   } finally {
+    const teardownMsg = browser ? 'Closing browser…' : 'Releasing resources…';
+    onProgress(progressTotal, progressTotal, teardownMsg, { runStage: 'teardown' });
+    log(teardownMsg.replace('…', '...'));
     if (requestContextOwned && requestContext) await requestContext.dispose().catch(() => {});
-    if (browser) await browser.close();
+    if (browser) await browser.close().catch(() => {});
+    log('Teardown finished');
   }
 
   const executionTime = Date.now() - startTime;
@@ -505,7 +534,12 @@ async function runTest(workspacePath, testId, options = {}) {
     steps: reportSteps,
     createdAt: new Date().toISOString(),
   };
-  if (saveReportToFile) reportsStore.saveReport(workspacePath, report);
+  if (saveReportToFile) {
+    onProgress(progressTotal, progressTotal, 'Saving report…', { runStage: 'persist' });
+    log('Saving report...');
+    reportsStore.saveReport(workspacePath, report);
+    log(`Report saved id=${report.id} status=${report.status}`);
+  }
   return report;
 }
 
